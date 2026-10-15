@@ -75,7 +75,7 @@ A separate sequential interpreter checks registers, memory and the committed
 instruction path. The benchmark runner regenerates all traces and measured
 results. Rebuild the PDF afterward using the [repository PDF instructions](../../README.md#rebuild-the-pdf-reports).
 
-- [PDF report](Tomasulo_Assignment_Report.pdf): implementation, timing conventions, results, limitations.
+- [PDF report](Tomasulo_Assignment_Report.pdf): follows the supplied sample's Introduction, Code Changes, and Results sections, with Initial Version / My Version code excerpts and eight separate issue-width figures.
 - [Benchmarks](benchmarks/): nine programs, including both sample-report cases.
 - [Saved results](results/): 36 complete traces, summary CSV and final states.
 - [Source](tomasulo-python/code/): the original stage organization with revised internals.

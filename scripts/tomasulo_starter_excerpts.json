@@ -1,0 +1,50 @@
+{
+  "issue": {
+    "file": "issue.py",
+    "first_line": 171,
+    "last_line": 179,
+    "text": "def issue(cycle, PC, instructions, ROB, size_ROB, \n        rs_int_adder, \n        rs_fp_adder, \n        rs_fp_multi, \n        ld_sd_queue, size_ld_sd_queue, \n        rat_int, rat_fp):\n    # fetch 1 instruction \n    ins = instructions[PC.PC]\n    op = ins.split(' ')[0]"
+  },
+  "renaming": {
+    "file": "issue.py",
+    "first_line": 48,
+    "last_line": 65,
+    "text": "# reg 1\nregister = ins.split(' ')[2] # register name \nif register[0] == 'F':\n    if (type(rat_fp[int(register[1:])]) == str):\n        entry.tag_1st = rat_fp[int(register[1:])]\n        entry.valid_1st = 0\n    else:\n        entry.value_1st = rat_fp[int(register[1:])]\n        entry.valid_1st = 1\nelif register[0] == 'R':\n    if (type(rat_int[int(register[1:])]) == str):\n        entry.tag_1st = rat_int[int(register[1:])]\n        entry.valid_1st = 0\n    else:\n        entry.value_1st = rat_int[int(register[1:])]\n        entry.valid_1st = 1\nelse:\n    pass"
+  },
+  "writeback": {
+    "file": "wb.py",
+    "first_line": 26,
+    "last_line": 31,
+    "text": "# rat_int\nif reg_tag[0] == 'R':\n    rat_int[int(reg_tag[1:])] = cdb.value\n# rat_fp\nif reg_tag[0] == 'F':\n    rat_fp[int(reg_tag[1:])] = cdb.value"
+  },
+  "commit": {
+    "file": "commit.py",
+    "first_line": 27,
+    "last_line": 38,
+    "text": "def commit(ROB, reg_int, reg_fp, cycle, instructions):\n    if len(ROB)>0:\n        if instructions[ROB[0].PC].split(' ')[0]=='Bne':\n            if len(ROB[0].exe)!=0:\n                entry = ROB.popleft()\n                print_ROB(entry, instructions)\n        if (len(ROB)>0)&(instructions[ROB[0].PC].split(' ')[0]!='Bne'):\n            if len(ROB[0].cdb)!=0: # broadcasted instructions\n                ROB[0].commit.append(cycle+1)\n                entry = ROB.popleft()\n                modify_arch_reg(entry, reg_int, reg_fp)\n                print_ROB(entry, instructions)"
+  },
+  "cycles": {
+    "file": "exe.py",
+    "first_line": 50,
+    "last_line": 53,
+    "text": "def fu_exe(fu, fu_results, ROB, time_fu, cycle, PC):\n    if len(fu)!=0:\n        for element in fu:\n            element.cycle += 1"
+  },
+  "ready": {
+    "file": "exe.py",
+    "first_line": 15,
+    "last_line": 23,
+    "text": "def check_valid_ins_in_rs(rs):\n    index = -1\n    if len(rs)!=0:\n        for i in range(len(rs)):\n            if (rs[i].valid_1st==1)&(rs[i].valid_2nd==1)&(rs[i].busy==1):\n                index = i\n                break\n    return index"
+  },
+  "memory": {
+    "file": "mem.py",
+    "first_line": 19,
+    "last_line": 28,
+    "text": "def forward_check_from_sd(ld_sd_queue, index):\n    data = []\n    for i in reversed(range(index)):\n        if (ld_sd_queue[i].op=='Sd'):\n            if (ld_sd_queue[i].address == ld_sd_queue[index].address):\n                if (type(ld_sd_queue[i].data)==int)|(type(ld_sd_queue[i].data)==float):\n                    data.append(ld_sd_queue[i].data)\n            break\n    return data"
+  },
+  "branch": {
+    "file": "exe.py",
+    "first_line": 71,
+    "last_line": 75,
+    "text": "elif (fu[0].op=='Bne'):\n    fu_results.pop()\n    if fu[0].value1 == fu[0].value2:\n        PC.PC += 1\n        PC.valid = 1"
+  }
+}

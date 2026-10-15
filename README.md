@@ -38,7 +38,7 @@ Each project's README contains the full requirements and reproduction commands.
 The reports describe the implementation, checked results, and limitations for each problem:
 
 - [Branch prediction report](Assignment1/BP/Branch_Prediction_Report.pdf) — 6 pages.
-- [Tomasulo report](Assignment1/Tomasulo/Tomasulo_Assignment_Report.pdf) — 13 pages, including both sample cases at issue widths 1–4.
+- [Tomasulo report](Assignment1/Tomasulo/Tomasulo_Assignment_Report.pdf) — 23 pages following the supplied sample's Introduction / Code Changes / Results format, with code comparisons and one result figure per issue width.
 
 From the repository root, using Python 3.9 or newer:
 
