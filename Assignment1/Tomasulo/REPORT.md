@@ -99,7 +99,7 @@ when turning that illustrative input into an executable benchmark.
 
 ## 3. Correctness testing
 
-Run:
+Run from `Assignment1/Tomasulo`:
 
 ```sh
 python3 -m unittest discover -s tests -v

@@ -202,7 +202,7 @@ The tests passed in both the optimized build and a build with AddressSanitizer
 and UndefinedBehaviorSanitizer. The full trace comparison and independent
 driver checks also completed successfully.
 
-From the repository root:
+From `Assignment1/BP`:
 
 ```sh
 make -C cbp2-infrastructure-v2/src all test sanitize

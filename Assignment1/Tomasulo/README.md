@@ -8,7 +8,7 @@ Requires **Python 3.9 or newer**. No third-party dependencies or build step.
 
 ## Run
 
-From this repository's root:
+From `Assignment1/Tomasulo`:
 
 ```sh
 python3 tomasulo-python/code/main.py
@@ -61,6 +61,8 @@ calculators, while memory remains single-ported and unpipelined. There is one
 CDB and a one-instruction retirement limit, independent of issue width.
 
 ## Verify and reproduce the report
+
+From `Assignment1/Tomasulo`:
 
 ```sh
 python3 -m unittest discover -s tests -v
