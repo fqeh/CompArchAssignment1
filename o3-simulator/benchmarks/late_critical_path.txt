@@ -1,0 +1,17 @@
+# Wider issue starts the late, long dependency chain sooner.
+Integer adder 12 1 2
+FP adder 4 3 1
+FP multiplier 4 12 1
+Load/store unit 4 1 3 1
+ROB entries = 32
+F1=2, F2=3
+Addi R1 R0 1
+Addi R2 R0 2
+Addi R3 R0 3
+Addi R4 R0 4
+Addi R5 R0 5
+Addi R6 R0 6
+Addi R7 R0 7
+Addi R8 R0 8
+Mult.d F3 F1 F2
+Add.d F4 F3 F3
