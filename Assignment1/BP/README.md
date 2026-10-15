@@ -6,7 +6,7 @@ predictor with 512 sets and two ways. A global hit supplies the prediction;
 otherwise the bimodal prediction is used. Both predictors learn from actual
 conditional branch outcomes using two-bit saturating counters.
 
-The implementation and measured results are explained in [REPORT.md](REPORT.md).
+The implementation and measured results are explained in [the PDF report](Branch_Prediction_Report.pdf).
 On all 20 supplied traces, the hybrid averages **7.260 MPKI**, compared with
 86.312 for always-taken, 10.299 for bimodal, and 6.306 for the supplied gshare.
 MPKI counts mispredictions per 1,000 instructions; lower is better.
@@ -88,7 +88,7 @@ of trace MPKIs because all traces have the same instruction count.
 | `cbp2-infrastructure-v2/tests/predictor_test.cc` | Counter, lookup, replacement, history, and pattern tests |
 | `cbp2-infrastructure-v2/tests/evaluate.cc` | Four-predictor trace evaluator |
 | `scripts/benchmark.py` | Reproduce and verify the reported measurements |
-| `REPORT.md` | Design, assumptions, results, analysis, and references |
+| `Branch_Prediction_Report.pdf` | Design, assumptions, results, analysis, and references |
 
 The required work predicts taken/not taken. As permitted by the handout, it
 omits the loop predictor, target prediction, and Pentium M path information
@@ -106,3 +106,9 @@ The simulator, trace reader, gshare example, original documentation, and runner
 were supplied with the course infrastructure credited to Daniel A. Jiménez.
 The hybrid implementation follows the assignment handout. No external cache
 implementation was used. See the report for design references and tool assistance.
+
+## Rebuild the PDF
+
+See the [repository PDF instructions](../../README.md#rebuild-the-pdf-reports).
+The report covers the implementation, all 20 trace results, tests, limitations,
+and reproduction commands.

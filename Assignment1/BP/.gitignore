@@ -9,4 +9,5 @@ cbp2-infrastructure-v2/src/evaluate
 # Obtain benchmark traces and the handout from the course distribution.
 cbp2-infrastructure-v2/traces/
 *.pdf
+!Branch_Prediction_Report.pdf
 SOURCE_SUBMISSION.zip

@@ -73,9 +73,9 @@ The suite includes manually checked timings, hazard/recovery tests, all benchmar
 widths, and 40 deterministic randomized programs at each of the four widths.
 A separate sequential interpreter checks registers, memory and the committed
 instruction path. The benchmark runner regenerates all traces and measured
-results, including the results table in the report.
+results. Rebuild the PDF afterward using the [repository PDF instructions](../../README.md#rebuild-the-pdf-reports).
 
-- [Report](REPORT.md): implementation, timing conventions, results, limitations.
+- [PDF report](Tomasulo_Assignment_Report.pdf): implementation, timing conventions, results, limitations.
 - [Benchmarks](benchmarks/): nine programs, including both sample-report cases.
 - [Saved results](results/): 36 complete traces, summary CSV and final states.
 - [Source](tomasulo-python/code/): the original stage organization with revised internals.

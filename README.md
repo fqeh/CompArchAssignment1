@@ -8,8 +8,8 @@ Assignment1/
 └── Tomasulo/    # Multi-issue Tomasulo simulator
 ```
 
-- **[BP](Assignment1/BP/)**: Pentium M style hybrid branch predictor, C++ source, tests, benchmark scripts, and saved results. See the [instructions](Assignment1/BP/README.md) and [report](Assignment1/BP/REPORT.md).
-- **[Tomasulo](Assignment1/Tomasulo/)**: Python out-of-order simulator, tests, benchmarks, saved results, and assignment PDFs. See the [instructions](Assignment1/Tomasulo/README.md) and [report](Assignment1/Tomasulo/REPORT.md).
+- **[BP](Assignment1/BP/)**: Pentium M style hybrid branch predictor, C++ source, tests, benchmark scripts, and saved results. See the [instructions](Assignment1/BP/README.md) and [PDF report](Assignment1/BP/Branch_Prediction_Report.pdf).
+- **[Tomasulo](Assignment1/Tomasulo/)**: Python out-of-order simulator, tests, benchmarks, saved results, and assignment PDFs. See the [instructions](Assignment1/Tomasulo/README.md) and [PDF report](Assignment1/Tomasulo/Tomasulo_Assignment_Report.pdf).
 
 ## Quick start
 
@@ -32,3 +32,22 @@ python3 -m unittest discover -s tests -v
 ```
 
 Each project's README contains the full requirements and reproduction commands.
+
+## Rebuild the PDF reports
+
+The reports describe the implementation, checked results, and limitations for each problem:
+
+- [Branch prediction report](Assignment1/BP/Branch_Prediction_Report.pdf) — 6 pages.
+- [Tomasulo report](Assignment1/Tomasulo/Tomasulo_Assignment_Report.pdf) — 13 pages, including both sample cases at issue widths 1–4.
+
+From the repository root, using Python 3.9 or newer:
+
+```sh
+python3 -m venv .report-venv
+.report-venv/bin/pip install -r requirements-report.txt
+.report-venv/bin/python scripts/build_assignment_reports.py
+```
+
+The builder checks the saved BP measurements against source checksums and reruns all
+36 Tomasulo benchmarks against the sequential interpreter and saved outputs.
+The numerical inputs remain in each project's `results/` folder.
