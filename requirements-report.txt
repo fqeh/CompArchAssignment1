@@ -1,3 +1,0 @@
-# Optional PDF tools. The simulator itself has no third-party dependencies.
-reportlab==5.0.1
-pypdf==6.20.1
