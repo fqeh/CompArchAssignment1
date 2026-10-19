@@ -1,0 +1,7 @@
+/src/predict
+/src/predict_extra_credit
+/tests/test_pm_predictor
+*.dSYM/
+__pycache__/
+*.py[cod]
+.DS_Store

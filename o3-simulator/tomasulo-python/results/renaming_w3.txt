@@ -1,0 +1,26 @@
+Issue width: 3   Cycles: 18   Committed: 6   IPC: 0.333
+
+ID    PC    INSTRUCTION                   ISSUE   EX          MEM         WB      COMMIT      STATUS
+0     0     Mult.d F2 F4 F6               1       2-11                    12      13          committed
+1     4     Add.d F2 F8 F10               1       2-3                     4       14          committed
+2     8     Sub.d F12 F2 F14              1       5-6                     7       15          committed
+3     12    Add.d F8 F12 F4               2       8-9                     10      16          committed
+4     16    Mult.d F2 F4 F6               2       3-12                    13      17          committed
+5     20    Add.d F16 F2 F12              2       14-15                   16      18          committed
+
+REGISTER VALUES
+R0=0  R1=0  R2=0  R3=0  R4=0  R5=0  R6=0  R7=0
+R8=0  R9=0  R10=0  R11=0  R12=0  R13=0  R14=0  R15=0
+R16=0  R17=0  R18=0  R19=0  R20=0  R21=0  R22=0  R23=0
+R24=0  R25=0  R26=0  R27=0  R28=0  R29=0  R30=0  R31=0
+F0=0  F1=0  F2=6  F3=0  F4=2  F5=0  F6=3  F7=0
+F8=27  F9=0  F10=20  F11=0  F12=25  F13=0  F14=5  F15=0
+F16=31  F17=0  F18=0  F19=0  F20=0  F21=0  F22=0  F23=0
+F24=0  F25=0  F26=0  F27=0  F28=0  F29=0  F30=0  F31=0
+
+NON-ZERO MEMORY VALUES
+Address   Value
+(none)
+
+STATISTICS
+issued=6  committed=6  squashed=0  branches=0  mispredictions=0  memory_replays=0  forwarded_loads=0  issue_stall_cycles=0

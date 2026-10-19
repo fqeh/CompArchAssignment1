@@ -1,0 +1,100 @@
+164.gzip
+Conditional branches: 15114596
+Direction misses: 1294987
+12.950 MPKI
+
+175.vpr
+Conditional branches: 12827221
+Direction misses: 1682106
+16.821 MPKI
+
+176.gcc
+Conditional branches: 17083242
+Direction misses: 1979917
+19.799 MPKI
+
+181.mcf
+Conditional branches: 21700420
+Direction misses: 2007479
+20.075 MPKI
+
+186.crafty
+Conditional branches: 8927032
+Direction misses: 1081318
+10.813 MPKI
+
+197.parser
+Conditional branches: 14190746
+Direction misses: 1261126
+12.611 MPKI
+
+201.compress
+Conditional branches: 11764885
+Direction misses: 860639
+8.606 MPKI
+
+202.jess
+Conditional branches: 14154055
+Direction misses: 256142
+2.561 MPKI
+
+205.raytrace
+Conditional branches: 12201864
+Direction misses: 408923
+4.089 MPKI
+
+209.db
+Conditional branches: 13191770
+Direction misses: 527170
+5.272 MPKI
+
+213.javac
+Conditional branches: 12986593
+Direction misses: 328799
+3.288 MPKI
+
+222.mpegaudio
+Conditional branches: 13021205
+Direction misses: 325094
+3.251 MPKI
+
+227.mtrt
+Conditional branches: 12512685
+Direction misses: 390366
+3.904 MPKI
+
+228.jack
+Conditional branches: 11926271
+Direction misses: 568496
+5.685 MPKI
+
+252.eon
+Conditional branches: 7724960
+Direction misses: 383095
+3.831 MPKI
+
+253.perlbmk
+Conditional branches: 13537118
+Direction misses: 737917
+7.379 MPKI
+
+254.gap
+Conditional branches: 13838041
+Direction misses: 575612
+5.756 MPKI
+
+255.vortex
+Conditional branches: 11073761
+Direction misses: 222843
+2.228 MPKI
+
+256.bzip2
+Conditional branches: 24586276
+Direction misses: 14403
+0.144 MPKI
+
+300.twolf
+Conditional branches: 13098893
+Direction misses: 2423827
+24.238 MPKI
+Average MPKI: 8.665

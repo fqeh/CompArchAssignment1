@@ -1,0 +1,12 @@
+Integer adder 4 1 1
+FP multiplier 2 15 1
+Load/store unit 8 1 4 2
+ROB entries = 32
+Issue width = 1
+F2=7, F4=9, F8=11
+Mult.d F30 F2 F4
+Sd F2 0(R0)
+Sd F4 4(R0)
+Ld F6 0(R0)
+Sd F8 0(R0)
+Ld F10 0(R0)

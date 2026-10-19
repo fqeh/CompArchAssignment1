@@ -1,0 +1,8 @@
+Integer adder 6 1 1
+ROB entries = 16
+Issue width = 1
+R1=4
+Addi R2 R2 2
+Addi R1 R1 -1
+Bne R1 R0 -3
+Add R3 R1 R2

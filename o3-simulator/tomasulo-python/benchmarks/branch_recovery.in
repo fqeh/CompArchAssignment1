@@ -1,0 +1,12 @@
+Integer adder 8 4 1
+Load/store unit 8 1 2 1
+Issue width = 1
+F2=7, Mem[0]=3
+Beq R0 R0 3
+Sd F2 0(R0)
+Addi R1 R0 99
+Ld F4 256(R0)
+Addi R2 R0 5
+Bne R2 R0 1
+Addi R3 R0 99
+Addi R4 R2 1

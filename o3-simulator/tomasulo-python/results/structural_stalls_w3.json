@@ -1,0 +1,425 @@
+{
+  "config": {
+    "issue_width": 3,
+    "rob_entries": 3,
+    "rs_int": 1,
+    "rs_add": 1,
+    "rs_mul": 1,
+    "lsq_entries": 1,
+    "int_cycles": 4,
+    "add_cycles": 3,
+    "mul_cycles": 8,
+    "address_cycles": 2,
+    "memory_cycles": 3,
+    "int_units": 1,
+    "add_units": 1,
+    "mul_units": 1,
+    "address_units": 1
+  },
+  "cycles": 31,
+  "ipc": 0.22580645161290322,
+  "statistics": {
+    "issued": 7,
+    "committed": 7,
+    "squashed": 0,
+    "branches": 0,
+    "mispredictions": 0,
+    "memory_replays": 0,
+    "forwarded_loads": 0,
+    "issue_stall_cycles": 23
+  },
+  "registers": {
+    "R0": 0,
+    "R1": 2,
+    "R2": 3,
+    "R3": 5,
+    "R4": 5,
+    "R5": 5,
+    "R6": 0,
+    "R7": 0,
+    "R8": 0,
+    "R9": 0,
+    "R10": 0,
+    "R11": 0,
+    "R12": 0,
+    "R13": 0,
+    "R14": 0,
+    "R15": 0,
+    "R16": 0,
+    "R17": 0,
+    "R18": 0,
+    "R19": 0,
+    "R20": 0,
+    "R21": 0,
+    "R22": 0,
+    "R23": 0,
+    "R24": 0,
+    "R25": 0,
+    "R26": 0,
+    "R27": 0,
+    "R28": 0,
+    "R29": 0,
+    "R30": 0,
+    "R31": 0,
+    "F0": 0.0,
+    "F1": 4.0,
+    "F2": 5.0,
+    "F3": 9.0,
+    "F4": 20.0,
+    "F5": 20.0,
+    "F6": 0.0,
+    "F7": 0.0,
+    "F8": 0.0,
+    "F9": 0.0,
+    "F10": 0.0,
+    "F11": 0.0,
+    "F12": 0.0,
+    "F13": 0.0,
+    "F14": 0.0,
+    "F15": 0.0,
+    "F16": 0.0,
+    "F17": 0.0,
+    "F18": 0.0,
+    "F19": 0.0,
+    "F20": 0.0,
+    "F21": 0.0,
+    "F22": 0.0,
+    "F23": 0.0,
+    "F24": 0.0,
+    "F25": 0.0,
+    "F26": 0.0,
+    "F27": 0.0,
+    "F28": 0.0,
+    "F29": 0.0,
+    "F30": 0.0,
+    "F31": 0.0
+  },
+  "memory": {
+    "0": 20.0
+  },
+  "instructions": [
+    {
+      "tag": 0,
+      "instruction": {
+        "pc": 0,
+        "op": "add",
+        "dest": "R3",
+        "sources": [
+          "R1",
+          "R2"
+        ],
+        "immediate": 0,
+        "text": "Add R3 R1 R2"
+      },
+      "operands": [
+        {
+          "value": 2,
+          "tag": null,
+          "available": 0
+        },
+        {
+          "value": 3,
+          "tag": null,
+          "available": 0
+        }
+      ],
+      "issue": 1,
+      "ex_start": 2,
+      "ex_end": 5,
+      "mem_start": null,
+      "mem_end": null,
+      "wb": 6,
+      "commit": 7,
+      "commit_start": null,
+      "ready": true,
+      "ready_cycle": 6,
+      "value": 5,
+      "address": null,
+      "address_cycle": null,
+      "predicted_next": null,
+      "predicted_taken": false,
+      "forwarded_from": null,
+      "fault": null,
+      "status": "committed",
+      "squash_cycle": null,
+      "squash_reason": null,
+      "pc_bytes": 0
+    },
+    {
+      "tag": 1,
+      "instruction": {
+        "pc": 1,
+        "op": "add",
+        "dest": "R4",
+        "sources": [
+          "R1",
+          "R2"
+        ],
+        "immediate": 0,
+        "text": "Add R4 R1 R2"
+      },
+      "operands": [
+        {
+          "value": 2,
+          "tag": null,
+          "available": 0
+        },
+        {
+          "value": 3,
+          "tag": null,
+          "available": 0
+        }
+      ],
+      "issue": 2,
+      "ex_start": 6,
+      "ex_end": 9,
+      "mem_start": null,
+      "mem_end": null,
+      "wb": 10,
+      "commit": 11,
+      "commit_start": null,
+      "ready": true,
+      "ready_cycle": 10,
+      "value": 5,
+      "address": null,
+      "address_cycle": null,
+      "predicted_next": null,
+      "predicted_taken": false,
+      "forwarded_from": null,
+      "fault": null,
+      "status": "committed",
+      "squash_cycle": null,
+      "squash_reason": null,
+      "pc_bytes": 4
+    },
+    {
+      "tag": 2,
+      "instruction": {
+        "pc": 2,
+        "op": "add",
+        "dest": "R5",
+        "sources": [
+          "R1",
+          "R2"
+        ],
+        "immediate": 0,
+        "text": "Add R5 R1 R2"
+      },
+      "operands": [
+        {
+          "value": 2,
+          "tag": null,
+          "available": 0
+        },
+        {
+          "value": 3,
+          "tag": null,
+          "available": 0
+        }
+      ],
+      "issue": 6,
+      "ex_start": 10,
+      "ex_end": 13,
+      "mem_start": null,
+      "mem_end": null,
+      "wb": 14,
+      "commit": 15,
+      "commit_start": null,
+      "ready": true,
+      "ready_cycle": 14,
+      "value": 5,
+      "address": null,
+      "address_cycle": null,
+      "predicted_next": null,
+      "predicted_taken": false,
+      "forwarded_from": null,
+      "fault": null,
+      "status": "committed",
+      "squash_cycle": null,
+      "squash_reason": null,
+      "pc_bytes": 8
+    },
+    {
+      "tag": 3,
+      "instruction": {
+        "pc": 3,
+        "op": "add.d",
+        "dest": "F3",
+        "sources": [
+          "F1",
+          "F2"
+        ],
+        "immediate": 0,
+        "text": "Add.d F3 F1 F2"
+      },
+      "operands": [
+        {
+          "value": 4.0,
+          "tag": null,
+          "available": 0
+        },
+        {
+          "value": 5.0,
+          "tag": null,
+          "available": 0
+        }
+      ],
+      "issue": 7,
+      "ex_start": 8,
+      "ex_end": 10,
+      "mem_start": null,
+      "mem_end": null,
+      "wb": 11,
+      "commit": 16,
+      "commit_start": null,
+      "ready": true,
+      "ready_cycle": 11,
+      "value": 9.0,
+      "address": null,
+      "address_cycle": null,
+      "predicted_next": null,
+      "predicted_taken": false,
+      "forwarded_from": null,
+      "fault": null,
+      "status": "committed",
+      "squash_cycle": null,
+      "squash_reason": null,
+      "pc_bytes": 12
+    },
+    {
+      "tag": 4,
+      "instruction": {
+        "pc": 4,
+        "op": "mult.d",
+        "dest": "F4",
+        "sources": [
+          "F1",
+          "F2"
+        ],
+        "immediate": 0,
+        "text": "Mult.d F4 F1 F2"
+      },
+      "operands": [
+        {
+          "value": 4.0,
+          "tag": null,
+          "available": 0
+        },
+        {
+          "value": 5.0,
+          "tag": null,
+          "available": 0
+        }
+      ],
+      "issue": 11,
+      "ex_start": 12,
+      "ex_end": 19,
+      "mem_start": null,
+      "mem_end": null,
+      "wb": 20,
+      "commit": 21,
+      "commit_start": null,
+      "ready": true,
+      "ready_cycle": 20,
+      "value": 20.0,
+      "address": null,
+      "address_cycle": null,
+      "predicted_next": null,
+      "predicted_taken": false,
+      "forwarded_from": null,
+      "fault": null,
+      "status": "committed",
+      "squash_cycle": null,
+      "squash_reason": null,
+      "pc_bytes": 16
+    },
+    {
+      "tag": 5,
+      "instruction": {
+        "pc": 5,
+        "op": "sd",
+        "dest": null,
+        "sources": [
+          "R0",
+          "F4"
+        ],
+        "immediate": 0,
+        "text": "Sd F4 0(R0)"
+      },
+      "operands": [
+        {
+          "value": 0,
+          "tag": null,
+          "available": 0
+        },
+        {
+          "value": 20.0,
+          "tag": null,
+          "available": 20
+        }
+      ],
+      "issue": 15,
+      "ex_start": 16,
+      "ex_end": 17,
+      "mem_start": 22,
+      "mem_end": 24,
+      "wb": null,
+      "commit": 24,
+      "commit_start": 22,
+      "ready": false,
+      "ready_cycle": 0,
+      "value": null,
+      "address": 0,
+      "address_cycle": 17,
+      "predicted_next": null,
+      "predicted_taken": false,
+      "forwarded_from": null,
+      "fault": null,
+      "status": "committed",
+      "squash_cycle": null,
+      "squash_reason": null,
+      "pc_bytes": 20
+    },
+    {
+      "tag": 6,
+      "instruction": {
+        "pc": 6,
+        "op": "ld",
+        "dest": "F5",
+        "sources": [
+          "R0"
+        ],
+        "immediate": 0,
+        "text": "Ld F5 0(R0)"
+      },
+      "operands": [
+        {
+          "value": 0,
+          "tag": null,
+          "available": 0
+        }
+      ],
+      "issue": 24,
+      "ex_start": 25,
+      "ex_end": 26,
+      "mem_start": 27,
+      "mem_end": 29,
+      "wb": 30,
+      "commit": 31,
+      "commit_start": null,
+      "ready": true,
+      "ready_cycle": 30,
+      "value": 20.0,
+      "address": 0,
+      "address_cycle": 26,
+      "predicted_next": null,
+      "predicted_taken": false,
+      "forwarded_from": null,
+      "fault": null,
+      "status": "committed",
+      "squash_cycle": null,
+      "squash_reason": null,
+      "pc_bytes": 24
+    }
+  ]
+}
