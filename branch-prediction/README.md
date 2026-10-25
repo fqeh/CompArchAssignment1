@@ -110,7 +110,8 @@ g++ -std=c++17 -O2 -Isrc tests/walkthrough.cc -o /tmp/branch-walkthrough
 
 The recorded evaluation ran each predictor on the same 20 cold-start traces,
 representing two billion instructions and 275,461,634 conditional branches in
-total. These measurements and the PDF come from the original Linux run;
+total. These measurements come from the original Linux run, and the report
+presents those recorded results;
 [`results/provenance.json`](results/provenance.json) records its environment
 and source/trace hashes. The published trace reader additionally resolves
 `gzip`, `bzip2`, and `cat` through `PATH` for macOS/Linux portability, so its
