@@ -1,0 +1,37 @@
+make: Entering directory '/workspace/scratch/ab0e063a2bb7/branch-prediction-Ali-Alfageeh/src'
+g++ -std=c++17 -O3 -Wall -Wextra -pedantic -I. -o test_predictor ../tests/test_predictor.cc
+./test_predictor
+PASS initialization
+PASS hash_partition
+PASS valid_bit_gate
+PASS bimodal_fallback
+PASS global_overrides_bimodal
+PASS local_saturation
+PASS global_saturation
+PASS saved_indices
+PASS invalid_way_first
+PASS lru_after_hit
+PASS replacement_resets_confidence
+PASS history_mask
+PASS unconditional_bypass
+PASS combined_flags
+PASS accounting_and_reset
+PASS randomized_reference_250000_events
+16 / 16 tests passed
+sizeof(pm_predictor) = 7744 bytes
+python3 ../tests/test_cli.py
+test_compressed_and_plain_match (__main__.DriverTests.test_compressed_and_plain_match) ... ok
+test_corrupt_compression_fails (__main__.DriverTests.test_corrupt_compression_fails) ... ok
+test_default_pm_and_original_output (__main__.DriverTests.test_default_pm_and_original_output) ... ok
+test_empty_trace_has_no_division_by_zero (__main__.DriverTests.test_empty_trace_has_no_division_by_zero) ... ok
+test_exact_direction_counts (__main__.DriverTests.test_exact_direction_counts) ... ok
+test_global_accounting (__main__.DriverTests.test_global_accounting) ... ok
+test_invalid_cli_fails (__main__.DriverTests.test_invalid_cli_fails) ... ok
+test_missing_file_fails (__main__.DriverTests.test_missing_file_fails) ... ok
+test_repeatability (__main__.DriverTests.test_repeatability) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.317s
+
+OK
+make: Leaving directory '/workspace/scratch/ab0e063a2bb7/branch-prediction-Ali-Alfageeh/src'

@@ -1,0 +1,25 @@
+ASAN_OPTIONS=detect_leaks=0 (LeakSanitizer cannot inspect this container process tree)
+make: Entering directory '/workspace/scratch/ab0e063a2bb7/branch-prediction-Ali-Alfageeh/src'
+g++ -std=c++17 -g -O1 -Wall -Wextra -pedantic \
+    -fsanitize=address,undefined -fno-omit-frame-pointer -I. \
+    -o test_predictor_san ../tests/test_predictor.cc
+./test_predictor_san
+PASS initialization
+PASS hash_partition
+PASS valid_bit_gate
+PASS bimodal_fallback
+PASS global_overrides_bimodal
+PASS local_saturation
+PASS global_saturation
+PASS saved_indices
+PASS invalid_way_first
+PASS lru_after_hit
+PASS replacement_resets_confidence
+PASS history_mask
+PASS unconditional_bypass
+PASS combined_flags
+PASS accounting_and_reset
+PASS randomized_reference_250000_events
+16 / 16 tests passed
+sizeof(pm_predictor) = 7744 bytes
+make: Leaving directory '/workspace/scratch/ab0e063a2bb7/branch-prediction-Ali-Alfageeh/src'

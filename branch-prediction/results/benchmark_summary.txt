@@ -1,0 +1,6 @@
+Predictor       Misses         MPKI        Accuracy
+always_taken    172,623,375   86.311688    37.3331%
+bimodal          20,597,217   10.298609    92.5227%
+gshare           12,611,718    6.305859    95.4216%
+pm               14,519,207    7.259603    94.7291%
+80 complete runs; 20 traces; cold predictor for each run.

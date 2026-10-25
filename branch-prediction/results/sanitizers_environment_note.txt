@@ -1,0 +1,9 @@
+make: Entering directory '/workspace/scratch/ab0e063a2bb7/branch-prediction-Ali-Alfageeh/src'
+g++ -std=c++17 -g -O1 -Wall -Wextra -pedantic -fsanitize=address,undefined -fno-omit-frame-pointer -I. -o test_predictor_san ../tests/test_predictor.cc
+./test_predictor_san
+==13==Can't open /proc/12/task for reading.
+==12==LeakSanitizer has encountered a fatal error.
+==12==HINT: For debugging, try setting environment variable LSAN_OPTIONS=verbosity=1:log_threads=1
+==12==HINT: LeakSanitizer does not work under ptrace (strace, gdb, etc)
+make: *** [Makefile:21: sanitize] Error 1
+make: Leaving directory '/workspace/scratch/ab0e063a2bb7/branch-prediction-Ali-Alfageeh/src'
