@@ -1,0 +1,1620 @@
+--- original/tomasulo-python/code/code.in
++++ code/code.in
+@@ -1,9 +1,18 @@
+-Ld F2 0(R1)
+-Mult.d F4 F2 F20
+-Ld F6 0(R2)
+-Add.d F6 F4 F6
+-Sd F6 0(R2)
+-Addi R1 R1 -4
+-Addi R2 R2 -4
+-Bne R1 R0 -12
+-Add.d F20 F2 F2
++# Author: Ali Alfageeh
++Integer adder 4 1 1
++FP adder 4 3 1
++FP multiplier 3 5 1
++Load/store unit 5 1 4 1
++ROB entries = 32
++Issue width = 2
++R1=12, R2=32, F20=3
++Mem[4]=3, Mem[8]=2, Mem[12]=1, Mem[24]=6, Mem[28]=5, Mem[32]=4
++Ld F2, 0(R1)
++Mult.d F4, F2, F20
++Ld F6, 0(R2)
++Add.d F6, F4, F6
++Sd F6, 0(R2)
++Addi R1, R1, -4
++Addi R2, R2, -4
++Bne R1, R0, -8
++Add.d F20, F2, F2
+--- original/tomasulo-python/code/commit.py
++++ code/commit.py
+@@ -1,49 +1,35 @@
+-# Qing 
+-# 29th may 2017
+-'''
+-1. commit ROB_buffer
+-2. fetch header into ROB_buffer
+-'''
++"""In-order retirement and precise stores. Assignment author: Ali Alfageeh."""
+ 
+-# function: print ROB entry 
+-def print_ROB(entry, instructions):
+-    item = instructions[entry.PC].ljust(30)
+-    item += str(entry.issue).ljust(15) 
+-    item += str(entry.exe).ljust(15) 
+-    item += str(entry.mem).ljust(15)
+-    item += str(entry.cdb).ljust(15)
+-    item += str(entry.commit)
+-    print(item)
+-# function: modify architectual reg
+-def modify_arch_reg(entry, reg_int, reg_fp):
+-    if entry.dest_tag[0] == 'F':
+-        reg_fp[int(entry.dest_tag[1:])] = entry.value
+-    elif entry.dest_tag[0] == 'R':
+-        reg_int[int(entry.dest_tag[1:])] = entry.value
+-    else:
+-        pass
+ 
+-# function: commit
+-def commit(ROB, reg_int, reg_fp, cycle, instructions):
+-    if len(ROB)>0:
+-        if instructions[ROB[0].PC].split(' ')[0]=='Bne':
+-            if len(ROB[0].exe)!=0:
+-                entry = ROB.popleft()
+-                print_ROB(entry, instructions)
+-        if (len(ROB)>0)&(instructions[ROB[0].PC].split(' ')[0]!='Bne'):
+-            if len(ROB[0].cdb)!=0: # broadcasted instructions
+-                ROB[0].commit.append(cycle+1)
+-                entry = ROB.popleft()
+-                modify_arch_reg(entry, reg_int, reg_fp)
+-                print_ROB(entry, instructions)
+-            elif len(ROB[0].commit)!=0: # Sd
+-                entry = ROB.popleft()
+-                print_ROB(entry, instructions)
+-                if len(ROB)>0:
+-                    if len(ROB[0].cdb)!=0: # broadcasted instructions
+-                        ROB[0].commit.append(cycle+1)
+-                        entry = ROB.popleft()
+-                        modify_arch_reg(entry, reg_int, reg_fp)
+-                        print_ROB(entry, instructions)
+-            else:
+-                pass
++def commit(sim):
++    if not sim.rob:
++        return
++    entry = sim.rob[0]
++    if entry.fault:
++        raise ValueError(f'Instruction {entry.id} ({entry.ins.text}): {entry.fault}')
++    if entry.ins.op == 'sd':
++        if not entry.ex or entry.ex[-1] >= sim.cycle or not sim.ready(entry.operands[1]):
++            return
++        if not entry.mem:
++            if sim.port is not None and sim.port['end'] >= sim.cycle:
++                return
++            end = sim.cycle + sim.config.memory_cycles - 1
++            entry.mem = [sim.cycle, end]
++            sim.port = dict(entry=entry, end=end, kind='store')
++        if entry.mem[-1] != sim.cycle:
++            return
++        # Only the ROB head can update memory, at its retirement cycle.
++        sim.memory[entry.address] = entry.operands[1].value
++        sim.lsq.remove(entry)
++    elif entry.ins.op in ('beq', 'bne'):
++        if entry.resolved_at is None or entry.resolved_at >= sim.cycle:
++            return
++    elif entry.wb is None or entry.wb >= sim.cycle:
++        return
++    if entry.ins.dest and entry.ins.dest != 'R0':
++        sim.regs[entry.ins.dest] = entry.value
++        if sim.rat.get(entry.ins.dest) == entry.id:
++            del sim.rat[entry.ins.dest]
++    entry.commit = sim.cycle
++    entry.status = 'committed'
++    sim.rob.pop(0)
+--- original/tomasulo-python/code/exe.py
++++ code/exe.py
+@@ -1,167 +1,72 @@
+-# Qing 
+-# 24th May 2017
++"""Out-of-order execution with explicit completion cycles. Author: Ali Alfageeh."""
++from init import validate_address
+ 
+-''' 
+-1. calculate valid instructions
+-    -- for ALU instructions, write results into fu_results, remove that fu entry  
+-    -- for LD/SD, write address result immediately back to ld_sd_queue
+-2. fetch instructions into function unit with spare space
+-    -- remove ALU instructions from rs
+-    -- don't remove ld/sd instructions
+-'''
+-from init import fu_entry, fu_result
+ 
+-# function: check rs and return valid instruction index
+-def check_valid_ins_in_rs(rs):
+-    index = -1
+-    if len(rs)!=0:
+-        for i in range(len(rs)):
+-            if (rs[i].valid_1st==1)&(rs[i].valid_2nd==1)&(rs[i].busy==1):
+-                index = i
++def exe(sim):
++    # Completing jobs remain occupied through this cycle. Integer/address units
++    # start a new operation only next cycle; FP pipes accept one per FU per cycle.
++    old_jobs = list(sim.jobs)
++    for job in sorted(old_jobs, key=lambda j: j['entry'].id):
++        if job['end'] == sim.cycle and sim.active(job['entry']):
++            complete(sim, job['entry'])
++    for unit in ('integer', 'fp_add', 'fp_mul', 'load_store'):
++        cfg = getattr(sim.config, unit)
++        queue = sim.lsq if unit == 'load_store' else sim.rs[unit]
++        if unit in ('integer', 'load_store'):
++            occupied = sum(j['unit'] == unit and sim.active(j['entry']) and j['end'] >= sim.cycle
++                           for j in old_jobs)
++            slots = cfg.count - occupied
++        else:
++            slots = cfg.count
++        for entry in list(queue):
++            if slots <= 0:
+                 break
+-    return index
++            if not sim.active(entry) or entry.ex or entry.issue >= sim.cycle:
++                continue
++            operands = entry.operands[:1] if unit == 'load_store' else entry.operands
++            if not all(sim.ready(operand) for operand in operands):
++                continue
++            entry.ex = [sim.cycle, sim.cycle + cfg.ex - 1]
++            job = dict(entry=entry, unit=unit, end=entry.ex[-1])
++            sim.jobs.append(job)
++            if unit != 'load_store':
++                queue.remove(entry)
++            slots -= 1
++            if job['end'] == sim.cycle:
++                complete(sim, entry)
++    sim.jobs = [j for j in sim.jobs if j['end'] > sim.cycle and sim.active(j['entry'])]
+ 
+-# function: check ld_sd_queue and return valid instruction index
+-def check_valid_ins_in_ldsd(ldsd):
+-    index = -1
+-    if len(ldsd)!=0:
+-        for i in range(len(ldsd)):
+-            if (ldsd[i].valid==1) & (ldsd[i].ready==0):
+-                index = i
+-                break
+-    return index
+ 
+-# function: add entry into fu 
+-def add_entry_into_fu(fu, ins_in_rs):
+-    fu[-1].cycle = 0
+-    fu[-1].op = ins_in_rs.op
+-    fu[-1].value1 = ins_in_rs.value_1st
+-    fu[-1].value2 = ins_in_rs.value_2nd
+-    fu[-1].dest_tag = ins_in_rs.dest_tag
+-
+-# function: find ROB entry by tag
+-def find_ROB_entry(ROB, tag):
+-    for index in range(len(ROB)):
+-        if ROB[index].ROB_tag == tag:
+-            break
+-    return index
+-
+-# function: functional units execution 
+-def fu_exe(fu, fu_results, ROB, time_fu, cycle, PC):
+-    if len(fu)!=0:
+-        for element in fu:
+-            element.cycle += 1
+-        # write starting cycle 
+-        if fu[-1].cycle == 1:
+-            index = find_ROB_entry(ROB, fu[-1].dest_tag)
+-            ROB[index].exe.append(cycle)
+-        # finish cycle
+-        if fu[0].cycle == time_fu:
+-            index = find_ROB_entry(ROB, fu[0].dest_tag)
+-            ROB[index].exe.append(cycle)
+-            # calculation result
+-            fu_results.append(fu_result())
+-            fu_results[-1].dest_tag = fu[0].dest_tag
+-            if (fu[0].op=='Add')|(fu[0].op=='Add.d')|(fu[0].op=='Addi'):
+-                fu_results[-1].value = fu[0].value1 + fu[0].value2
+-            elif (fu[0].op=='Sub')|(fu[0].op=='Sub.d'):
+-                fu_results[-1].value = fu[0].value1 - fu[0].value2
+-            elif (fu[0].op=='Mult.d'):
+-                fu_results[-1].value = fu[0].value1 * fu[0].value2
+-            elif (fu[0].op=='Bne'):
+-                fu_results.pop()
+-                if fu[0].value1 == fu[0].value2:
+-                    PC.PC += 1
+-                    PC.valid = 1
+-                else:
+-                    index = find_ROB_entry(ROB, fu[0].dest_tag)
+-                    offset = ROB[index].dest_tag
+-                    PC.PC = int(PC.PC + 1 + offset/4)
+-                    PC.valid = 1
+-            else:
+-                pass
+-            # remove from fu 
+-            fu.popleft()
+-
+-# function: ld_sd_execution 
+-def ld_sd_execution(ld_sd_exe, time_ld_sd_exe, ld_sd_queue, ROB, cycle):
+-    if ld_sd_exe.busy == 1:
+-        # write down starting cycle
+-        if ld_sd_exe.cycle == 0:            
+-            for element in ld_sd_queue:
+-                if element.ld_sd_tag == ld_sd_exe.dest_tag:
+-                    break
+-            index = find_ROB_entry(ROB, element.dest_tag)
+-            ROB[index].exe.append(cycle)
+-            # execute 
+-            ld_sd_exe.cycle += 1
+-        # write address back to ld_sd_queue
+-        if ld_sd_exe.cycle == time_ld_sd_exe:
+-            address = ld_sd_exe.value1 + ld_sd_exe.value2
+-            for element in ld_sd_queue:
+-                if element.ld_sd_tag == ld_sd_exe.dest_tag:
+-                    element.address = address
+-                    element.ready = 1
+-                    break
+-            # write down finish cycle
+-            index = find_ROB_entry(ROB, element.dest_tag)
+-            ROB[index].exe.append(cycle)
+-            ld_sd_exe.busy = 0
+-
+-# function: execution
+-def exe(fu_int_adder, time_fu_int_adder,
+-        fu_fp_adder, time_fu_fp_adder,
+-        fu_fp_multi, time_fu_fp_multi, results_buffer,
+-        rs_int_adder, rs_fp_adder, rs_fp_multi, 
+-        ld_sd_exe, time_ld_sd_exe, ld_sd_queue,
+-        cycle, ROB, PC):
+-    '''execution in fu and ld_sd address calculation'''
+-    ld_sd_execution(ld_sd_exe, time_ld_sd_exe, ld_sd_queue, ROB, cycle) 
+-    # functional units 
+-    fu_exe(fu_int_adder, results_buffer, ROB, time_fu_int_adder, cycle, PC)
+-    fu_exe(fu_fp_adder, results_buffer, ROB, time_fu_fp_adder, cycle, PC)
+-    fu_exe(fu_fp_multi, results_buffer, ROB, time_fu_fp_multi, cycle, PC)
+-    '''fetch instructions from rs and ld_sd_queue'''
+-    # from ld_sd_queue
+-    # check valid ins in ld_sd_queue 
+-    index = check_valid_ins_in_ldsd(ld_sd_queue)
+-    # put ins into ld_sd_exe
+-    if (index>=0)&(ld_sd_exe.busy==0):
+-        ld_sd_exe.busy = 1
+-        ld_sd_exe.cycle = 0
+-        ld_sd_exe.value1 = ld_sd_queue[index].reg_value
+-        ld_sd_exe.value2 = ld_sd_queue[index].immediate
+-        ld_sd_exe.dest_tag = ld_sd_queue[index].ld_sd_tag
+-        if ROB[find_ROB_entry(ROB, ld_sd_queue[index].dest_tag)].issue[0] < cycle:
+-            ld_sd_execution(ld_sd_exe, time_ld_sd_exe, ld_sd_queue, ROB, cycle)
+-    # from rs 
+-    # int_adder
+-    # fetch valid instruction 
+-    if check_valid_ins_in_rs(rs_int_adder)>=0:
+-        index = check_valid_ins_in_rs(rs_int_adder)
+-        fu_int_adder.append(fu_entry())
+-        add_entry_into_fu(fu_int_adder, rs_int_adder[index])
+-        # check if it's a waiting instruction
+-        if ROB[find_ROB_entry(ROB, rs_int_adder[index].dest_tag)].issue[0] < cycle:
+-            fu_exe(fu_int_adder, results_buffer, ROB, time_fu_int_adder, cycle, PC)
+-        # remove ins from rs 
+-        rs_int_adder[index].busy = 0
+-    # fp_adder
+-    if check_valid_ins_in_rs(rs_fp_adder)>=0:
+-        index = check_valid_ins_in_rs(rs_fp_adder)
+-        fu_fp_adder.append(fu_entry())
+-        add_entry_into_fu(fu_fp_adder, rs_fp_adder[index])
+-        if ROB[find_ROB_entry(ROB, rs_fp_adder[index].dest_tag)].issue[0] < cycle:
+-            fu_exe(fu_fp_adder, results_buffer, ROB, time_fu_fp_adder, cycle, PC)
+-        # remove ins from rs 
+-        rs_fp_adder[index].busy = 0
+-    # fp_multi
+-    if check_valid_ins_in_rs(rs_fp_multi)>=0:
+-        index = check_valid_ins_in_rs(rs_fp_multi)
+-        fu_fp_multi.append(fu_entry())
+-        add_entry_into_fu(fu_fp_multi, rs_fp_multi[index])
+-        if ROB[find_ROB_entry(ROB, rs_fp_multi[index].dest_tag)].issue[0] < cycle:
+-            fu_exe(fu_fp_multi, results_buffer, ROB, time_fu_fp_multi, cycle, PC)
+-        # remove ins from rs 
+-        rs_fp_multi[index].busy = 0
+-
++def complete(sim, entry):
++    ins = entry.ins
++    values = [operand.value for operand in entry.operands]
++    if ins.op in ('ld', 'sd'):
++        address = values[0] + ins.immediate
++        try:
++            validate_address(address)
++            entry.address = address
++        except ValueError as exc:
++            # A wrong-path fault is harmless if an older branch squashes it.
++            entry.fault = str(exc)
++            return
++        if ins.op == 'sd':
++            sim.check_memory_violation(entry)
++    elif ins.op in ('beq', 'bne'):
++        taken = (values[0] == values[1]) if ins.op == 'beq' else (values[0] != values[1])
++        target = entry.pc + 1 + ins.immediate
++        actual = target if taken else entry.pc + 1
++        entry.resolved_at = sim.cycle
++        sim.btb[entry.pc & 7] = dict(pc=entry.pc, taken=taken, target=target)
++        if actual != entry.predicted_next:
++            sim.stats['branch_mispredictions'] += 1
++            sim.recover(entry.id + 1, actual, 'branch')
++    else:
++        if ins.op == 'addi':
++            value = values[0] + ins.immediate
++        elif ins.op in ('add', 'add.d'):
++            value = values[0] + values[1]
++        elif ins.op in ('sub', 'sub.d'):
++            value = values[0] - values[1]
++        else:
++            value = values[0] * values[1]
++        sim.queue_result(entry, value)
+--- original/tomasulo-python/code/init.py
++++ code/init.py
+@@ -1,70 +1,224 @@
+-# Qing 
+-# 21st May 2017 
+-
+-from collections import namedtuple
+-
+-'''define data types'''
+-# reservation station 
+-def rs_entry():
+-    rs_entry = namedtuple('rs_entry', 'busy, op, tag_1st, value_1st, valid_1st, tag_2nd, value_2nd, valid_2nd, dest_tag')
+-    temp = rs_entry
+-    return temp 
+-# functional unit 
+-def fu_entry():
+-    fu_entry = namedtuple('fu_entry', 'cycle, op, value1, value2, dest_tag')
+-    temp = fu_entry
+-    return temp
+-# function result 
+-def fu_result():
+-    fu_result = namedtuple('fu_result', 'value, dest_tag')
+-    temp = fu_result
+-    return temp
+-# ld/sd entry
+-def ld_sd_entry():
+-    ld_sd_entry = namedtuple('ld_sd_entry', 'ld_sd_tag, ready, op, address, data, dest_tag, immediate, reg_tag, reg_value, valid')
+-    temp = ld_sd_entry
+-    return temp
+-# ld/sd exe
+-def ld_sd_exe():
+-    ld_sd_exe = namedtuple('ld_sd_exe', 'busy, cycle, value1, value2, dest_tag')
+-    temp = ld_sd_exe
+-    return temp
+-# ld/sd mem
+-def ld_sd_mem():
+-    ld_sd_mem = namedtuple('ld_sd_mem', 'busy, cycle, op, data, address, dest_tag')
+-    temp = ld_sd_mem
+-    return temp
+-# cdb
+-def cdb():
+-    cdb = namedtuple('cdb', 'valid, value, dest_tag')
+-    temp = cdb
+-    return temp
+-# ROB_entry 
+-def ROB_entry():
+-    ROB_entry = namedtuple('ROB_entry', 'ROB_tag, PC, value, dest_tag, issue, exe, mem, cdb, commit')
+-    temp = ROB_entry
+-    temp.issue = []
+-    temp.exe = []
+-    temp.mem = []
+-    temp.cdb = []
+-    temp.commit =[]
+-    return temp
+-# PC 
+-def PC():
+-    PC = namedtuple('PC', 'PC, valid')
+-    temp = PC
+-    return temp
+-# function: read instructions
+-def read_instruction(codefile):
+-    with open(codefile) as f:
+-            instructions = f.read().splitlines()
+-    return instructions
+-# function: build rs
+-def build_rs(num):
+-    rs = []
+-    for _ in range(num):
+-        temp = rs_entry()
+-        temp.busy = 0
+-        rs.extend([temp])
+-    return rs
+-
++"""Input parsing and processor state. Assignment author: Ali Alfageeh.
++
++Refactored from Qing's 2017 Tomasulo teaching simulator. The original source is
++preserved separately; this module replaces mutable namedtuple-class state.
++"""
++from dataclasses import dataclass, field
++from decimal import Decimal
++import re
++import math
++import struct
++
++
++@dataclass
++class UnitConfig:
++    rs: int
++    ex: int
++    count: int = 1
++
++
++@dataclass
++class Config:
++    integer: UnitConfig = field(default_factory=lambda: UnitConfig(2, 1))
++    fp_add: UnitConfig = field(default_factory=lambda: UnitConfig(3, 3))
++    fp_mul: UnitConfig = field(default_factory=lambda: UnitConfig(2, 20))
++    load_store: UnitConfig = field(default_factory=lambda: UnitConfig(3, 1))
++    memory_cycles: int = 4
++    rob_entries: int = 128
++    issue_width: int = 1
++
++
++@dataclass
++class Instruction:
++    op: str
++    dest: str | None
++    sources: list
++    immediate: int = 0
++    text: str = ''
++
++    @property
++    def unit(self):
++        if self.op in ('ld', 'sd'):
++            return 'load_store'
++        if self.op in ('add.d', 'sub.d'):
++            return 'fp_add'
++        if self.op == 'mult.d':
++            return 'fp_mul'
++        return 'integer'
++
++
++@dataclass
++class Program:
++    instructions: list
++    config: Config
++    registers: dict
++    memory: object
++
++
++def register(token, kind):
++    token = token.upper()
++    if not re.fullmatch(kind + r'(?:[0-9]|[12][0-9]|3[01])', token):
++        raise ValueError(f'Invalid {kind} register: {token}')
++    return token
++
++
++def parse_program(text, legacy_branch_bytes=False):
++    """Parse the assignment table, initial state and case-insensitive ISA.
++
++    Branch offsets are words, as in PC + 4 + (offset << 2). The explicit legacy
++    option converts starter byte offsets to words (and requires multiples of 4).
++    """
++    cfg = Config()
++    regs = {f'{k}{i}': 0 for k in ('R', 'F') for i in range(32)}
++    memory = ByteMemory()
++    instructions = []
++    for number, raw in enumerate(text.splitlines(), 1):
++        line = raw.split('#', 1)[0].split('//', 1)[0].strip()
++        if not line:
++            continue
++        low = line.lower()
++        if low.startswith(('cycles in', 'configuration', 'list of instructions')):
++            continue
++        found = False
++        for label, attr in [('integer adder', 'integer'), ('fp adder', 'fp_add'),
++                            ('fp multiplier', 'fp_mul'), ('load/store unit', 'load_store')]:
++            if low.startswith(label):
++                nums = line[len(label):].split()
++                try:
++                    vals = [int(x) for x in nums]
++                except ValueError as exc:
++                    raise ValueError(f'Line {number}: invalid hardware row') from exc
++                expected = 4 if attr == 'load_store' else 3
++                if len(vals) != expected or any(x < 1 for x in vals):
++                    raise ValueError(f'Line {number}: {label} requires {expected} positive integers')
++                setattr(cfg, attr, UnitConfig(vals[0], vals[1], vals[-1]))
++                if attr == 'load_store':
++                    cfg.memory_cycles = vals[2]
++                found = True
++                break
++        if found:
++            continue
++        match = re.fullmatch(r'(rob\s+entries|issue\s+width)\s*=\s*(-?\d+)', low)
++        if match:
++            value = int(match[2])
++            if match[1].startswith('rob'):
++                if value < 1:
++                    raise ValueError('ROB entries must be positive')
++                cfg.rob_entries = value
++            else:
++                if not 1 <= value <= 4:
++                    raise ValueError('Issue width must be between 1 and 4')
++                cfg.issue_width = value
++            continue
++        if '=' in line:
++            for assignment in line.split(','):
++                assignment = assignment.strip()
++                match = re.fullmatch(r'(R\d+|F\d+|Mem\[\d+\])\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)', assignment, re.I)
++                if not match:
++                    raise ValueError(f'Line {number}: invalid initialization: {assignment}')
++                name, val = match.groups()
++                if name.lower().startswith('mem'):
++                    address = int(re.search(r'\d+', name)[0])
++                    validate_address(address)
++                    memory[address] = float(val)
++                elif name[0].upper() == 'R':
++                    name = register(name, 'R')
++                    integer = Decimal(val)
++                    if integer != integer.to_integral_value():
++                        raise ValueError('Integer register initial values must be integers')
++                    if name == 'R0' and integer != 0:
++                        raise ValueError('R0 is hardwired to zero')
++                    regs[name] = int(integer)
++                else:
++                    regs[register(name, 'F')] = float(val)
++            continue
++        parts = line.replace(',', ' ').split()
++        op = parts[0].lower()
++        try:
++            if op in ('ld', 'sd'):
++                if len(parts) != 3:
++                    raise ValueError('load/store requires two operands')
++                freg = register(parts[1], 'F')
++                address = re.fullmatch(r'([+-]?\d+)\((R\d+)\)', parts[2], re.I)
++                if not address:
++                    raise ValueError('memory operand must be offset(Rn)')
++                base = register(address[2], 'R')
++                ins = Instruction(op, freg if op == 'ld' else None,
++                                  [base] if op == 'ld' else [base, freg], int(address[1]), line)
++            elif op in ('beq', 'bne'):
++                if len(parts) != 4:
++                    raise ValueError('branch requires three operands')
++                offset = int(parts[3])
++                if legacy_branch_bytes:
++                    if offset % 4:
++                        raise ValueError('legacy branch byte offset must be divisible by four')
++                    offset //= 4
++                ins = Instruction(op, None, [register(parts[1], 'R'), register(parts[2], 'R')], offset, line)
++            elif op in ('add', 'sub', 'addi', 'add.d', 'sub.d', 'mult.d'):
++                if len(parts) != 4:
++                    raise ValueError('ALU instruction requires three operands')
++                kind = 'F' if '.' in op else 'R'
++                dest, first = register(parts[1], kind), register(parts[2], kind)
++                if op == 'addi':
++                    ins = Instruction(op, dest, [first], int(parts[3]), line)
++                else:
++                    ins = Instruction(op, dest, [first, register(parts[3], kind)], 0, line)
++            else:
++                raise ValueError(f'Unsupported opcode: {parts[0]}')
++        except (ValueError, IndexError) as exc:
++            raise ValueError(f'Line {number}: {exc}') from exc
++        instructions.append(ins)
++    return Program(instructions, cfg, regs, memory)
++
++
++def validate_address(address):
++    if not isinstance(address, int) or not 0 <= address <= 252:
++        raise ValueError(f'Address {address} must be an integer in 0..252')
++
++
++def pack_float32(value):
++    """Round a value to four little-endian IEEE 754 binary32 bytes.
++
++    Python struct applies round-to-nearest, ties-to-even. Values too large for
++    finite binary32 become signed infinity, rather than aborting a store.
++    """
++    try:
++        return struct.pack('<f', value)
++    except OverflowError:
++        return struct.pack('<f', math.copysign(math.inf, value))
++
++
++def unpack_float32(data):
++    return struct.unpack('<f', data)[0]
++
++
++class ByteMemory:
++    """A genuine 256-byte memory; four-byte accesses may start at any 0..252.
++
++    Float views in items() include aligned starts and explicitly initialized or
++    committed-store starts. They are overlapping views, not independent cells.
++    """
++    def __init__(self):
++        self.data = bytearray(256)
++        self.view_starts = set(range(0, 256, 4))
++
++    def __getitem__(self, address):
++        return unpack_float32(self.read_bytes(address))
++
++    def __setitem__(self, address, value):
++        validate_address(address)
++        self.data[address:address + 4] = pack_float32(value)
++        self.view_starts.add(address)
++
++    def read_bytes(self, address):
++        validate_address(address)
++        return bytes(self.data[address:address + 4])
++
++    def copy(self):
++        other = ByteMemory()
++        other.data[:] = self.data
++        other.view_starts = self.view_starts.copy()
++        return other
++
++    def items(self):
++        return [(address, self[address]) for address in sorted(self.view_starts)]
+--- original/tomasulo-python/code/issue.py
++++ code/issue.py
+@@ -1,247 +1,34 @@
+-# Qing 
+-# 21st May 2017
++"""In-order multiple issue. Assignment author: Ali Alfageeh."""
++from simulator import Entry
+ 
+-"""
+-1. put 1 instruction in ROB
+-2. put this instruction in RS/ld_sd_queue
+-3. update RAT
+-"""
+-from collections import namedtuple, deque
+-from init import ld_sd_entry, ROB_entry
+ 
+-# function: find a tag for ld_sd_entry 
+-def find_tag_new_ldsd_entry(ld_sd_queue, size_ld_sd_queue):
+-    existing_tag = []
+-    tag_pool = []
+-    for i in range(len(ld_sd_queue)):
+-        existing_tag.append(ld_sd_queue[i].ld_sd_tag)
+-    for i in range(size_ld_sd_queue):
+-        tag_pool.append('ldsd'+str(i))
+-    return list(set(tag_pool)-set(existing_tag))[0]
+-
+-# function put ins into ROB 
+-def put_ins_into_ROB(ROB, size_ROB, PC, cycle, ins, ldsd_tag):
+-    ROB.append(ROB_entry())
+-    # ROB_tag
+-    if len(ROB)==1:
+-        ROB[-1].ROB_tag = 'ROB0'
+-    else:
+-        index = ROB[-2].ROB_tag[3:]
+-        ROB[-1].ROB_tag = 'ROB'+str((int(index)+1)%size_ROB)
+-    # PC
+-    ROB[-1].PC = PC.PC
+-    # dest_tag
+-    if ins.split(' ')[0]=='Sd': # SD
+-        ROB[-1].dest_tag = ldsd_tag
+-    elif ins.split(' ')[0]=='Bne': # BNE
+-        ROB[-1].dest_tag = int(ins.split(' ')[-1]) 
+-    else: # ALU and LD instructions
+-        ROB[-1].dest_tag = ins.split(' ')[1]
+-    # issue 
+-    ROB[-1].issue.append(cycle)
+-
+-# function: put ins into reservation station
+-def put_ins_into_rs(station, index, ins, ROB, rat_int, rat_fp):
+-    entry = station[index]
+-    entry.busy = 1
+-    entry.op = ins.split(' ')[0]
+-    # reg 1
+-    register = ins.split(' ')[2] # register name 
+-    if register[0] == 'F':
+-        if (type(rat_fp[int(register[1:])]) == str):
+-            entry.tag_1st = rat_fp[int(register[1:])]
+-            entry.valid_1st = 0
+-        else:
+-            entry.value_1st = rat_fp[int(register[1:])]
+-            entry.valid_1st = 1
+-    elif register[0] == 'R':
+-        if (type(rat_int[int(register[1:])]) == str):
+-            entry.tag_1st = rat_int[int(register[1:])]
+-            entry.valid_1st = 0
+-        else:
+-            entry.value_1st = rat_int[int(register[1:])]
+-            entry.valid_1st = 1
+-    else:
+-        pass
+-    # reg 2
+-    register = ins.split(' ')[3] # register name 
+-    if register[0] == 'F':
+-        if (type(rat_fp[int(register[1:])]) == str):
+-            entry.tag_2nd = rat_fp[int(register[1:])]
+-            entry.valid_2nd = 0
+-        else:
+-            entry.value_2nd = rat_fp[int(register[1:])]
+-            entry.valid_2nd = 1
+-    elif register[0] == 'R':
+-        if (type(rat_int[int(register[1:])]) == str):
+-            entry.tag_2nd = rat_int[int(register[1:])]
+-            entry.valid_2nd = 0
+-        else:
+-            entry.value_2nd = rat_int[int(register[1:])]
+-            entry.valid_2nd = 1
+-    else: # immediate number
+-        entry.value_2nd = int(ins.split(' ')[3])
+-        entry.valid_2nd = 1
+-    # dest_tag
+-    entry.dest_tag = ROB[-1].ROB_tag
+-
+-# function: put bne into rs
+-def put_bne_into_rs(rs_int_adder, index, ins, rat_int, rat_fp, ROB):
+-    entry = rs_int_adder[index]
+-    entry.busy = 1
+-    entry.op = ins.split(' ')[0]
+-    # reg 1
+-    register = ins.split(' ')[1] # register name 
+-    if register[0] == 'F':
+-        if (type(rat_fp[int(register[1:])]) == str):
+-            entry.tag_1st = rat_fp[int(register[1:])]
+-            entry.valid_1st = 0
+-        else:
+-            entry.value_1st = rat_fp[int(register[1:])]
+-            entry.valid_1st = 1
+-    elif register[0] == 'R':
+-        if (type(rat_int[int(register[1:])]) == str):
+-            entry.tag_1st = rat_int[int(register[1:])]
+-            entry.valid_1st = 0
+-        else:
+-            entry.value_1st = rat_int[int(register[1:])]
+-            entry.valid_1st = 1
+-    else:
+-        pass
+-    # reg 2
+-    register = ins.split(' ')[2] # register name 
+-    if register[0] == 'F':
+-        if (type(rat_fp[int(register[1:])]) == str):
+-            entry.tag_2nd = rat_fp[int(register[1:])]
+-            entry.valid_2nd = 0
+-        else:
+-            entry.value_2nd = rat_fp[int(register[1:])]
+-            entry.valid_2nd = 1
+-    elif register[0] == 'R':
+-        if (type(rat_int[int(register[1:])]) == str):
+-            entry.tag_2nd = rat_int[int(register[1:])]
+-            entry.valid_2nd = 0
+-        else:
+-            entry.value_2nd = rat_int[int(register[1:])]
+-            entry.valid_2nd = 1
+-    # dest_tag
+-    entry.dest_tag = ROB[-1].ROB_tag 
+-
+-# function: put ins into ld_sd_queue
+-def put_ins_into_ldsd(ldsd_tag, ld_sd_queue, ins, ROB, rat_int, rat_fp):
+-    ld_sd_queue.append(ld_sd_entry())
+-    # ld_sd_tag
+-    ld_sd_queue[-1].ld_sd_tag = ldsd_tag
+-    ld_sd_queue[-1].ready = 0
+-    ld_sd_queue[-1].op = ins.split(' ')[0]
+-    if ld_sd_queue[-1].op == 'Sd':
+-        register = ins.split(' ')[1] # register name 
+-        ld_sd_queue[-1].data = rat_fp[int(register[1:])]
+-        
+-    ld_sd_queue[-1].dest_tag = ROB[-1].ROB_tag
+-    # immediate and reg value 
+-    ld_sd_queue[-1].immediate = int(ins.split(' ')[-1][:-4])
+-    register = ins.split(' ')[-1][-3:-1] # register name 
+-    if (type(rat_int[int(register[1:])]) == str):
+-        ld_sd_queue[-1].reg_tag = rat_int[int(register[1:])]
+-        ld_sd_queue[-1].valid = 0
+-    else:
+-        ld_sd_queue[-1].reg_value = rat_int[int(register[1:])]
+-        ld_sd_queue[-1].valid = 1
+-
+-# function: check space of reservation station
+-def check_rs_space(station):
+-    index = -1
+-    for i in range(len(station)):
+-        if station[i].busy == 0:
+-            index = i
+-            break 
+-    return index
+-
+-# update RAT
+-def update_rat(ROB, rat_int, rat_fp):
+-    if ROB[-1].dest_tag[0] == 'F':
+-        rat_fp[int(ROB[-1].dest_tag[1:])] = ROB[-1].ROB_tag
+-    elif ROB[-1].dest_tag[0] == 'R':
+-        rat_int[int(ROB[-1].dest_tag[1:])] = ROB[-1].ROB_tag
+-    else:
+-        pass
+-
+-""""""
+-def issue(cycle, PC, instructions, ROB, size_ROB, 
+-        rs_int_adder, 
+-        rs_fp_adder, 
+-        rs_fp_multi, 
+-        ld_sd_queue, size_ld_sd_queue, 
+-        rat_int, rat_fp):
+-    # fetch 1 instruction 
+-    ins = instructions[PC.PC]
+-    op = ins.split(' ')[0] 
+-    '''decode'''
+-    # LD/SD instructions
+-    if (op=='Ld')|(op=='Sd'):
+-        # check space
+-        if (len(ROB)<size_ROB)&(len(ld_sd_queue)<size_ld_sd_queue):
+-            # find ldsd_tag
+-            ldsd_tag = find_tag_new_ldsd_entry(ld_sd_queue, size_ld_sd_queue)
+-            # put ins into ROB
+-            put_ins_into_ROB(ROB, size_ROB, PC, cycle, ins, ldsd_tag)
+-            # put ins into ld_sd_queue
+-            put_ins_into_ldsd(ldsd_tag, ld_sd_queue, ins, ROB, rat_int, rat_fp)
+-            # update RAT
+-            update_rat(ROB, rat_int, rat_fp)
+-            # PC
+-            PC.PC +=1
+-    # integer adder instructions
+-    elif (op=='Add')|(op=='Addi')|(op=='Sub'):
+-        # check space
+-        if (len(ROB)<size_ROB)&(check_rs_space(rs_int_adder)>=0):
+-            # put ins into ROB
+-            put_ins_into_ROB(ROB, size_ROB, PC, cycle, ins, '')
+-            # put ins into rs_int_adder
+-            index = check_rs_space(rs_int_adder)
+-            put_ins_into_rs(rs_int_adder, index, ins, ROB, rat_int, rat_fp)
+-            # update RAT
+-            update_rat(ROB, rat_int, rat_fp)
+-            # PC
+-            PC.PC +=1
+-    # fp adder instructions
+-    elif (op=='Add.d')|(op=='Sub.d'):
+-        # check space
+-        if (len(ROB)<size_ROB)&(check_rs_space(rs_fp_adder)>=0):
+-            # put ins into ROB
+-            put_ins_into_ROB(ROB, size_ROB, PC, cycle, ins, '')
+-            # put ins into rs_fp_adder
+-            index = check_rs_space(rs_fp_adder)
+-            put_ins_into_rs(rs_fp_adder, index, ins, ROB, rat_int, rat_fp)
+-            # update RAT
+-            update_rat(ROB, rat_int, rat_fp)
+-            # PC
+-            PC.PC +=1
+-    # fp multiplier instructions
+-    elif (op=='Mult.d'): 
+-        # check space
+-        if (len(ROB)<size_ROB)&(check_rs_space(rs_fp_multi)>=0):
+-            # put ins into ROB
+-            put_ins_into_ROB(ROB, size_ROB, PC, cycle, ins, '')
+-            # put ins into rs_fp_multi
+-            index = check_rs_space(rs_fp_multi)
+-            put_ins_into_rs(rs_fp_multi, index, ins, ROB, rat_int, rat_fp)
+-            # update RAT
+-            update_rat(ROB, rat_int, rat_fp)
+-            # PC
+-            PC.PC +=1
+-    # Bne 
+-    elif (op=='Bne'):
+-        # check space
+-        if (len(ROB)<size_ROB)&(check_rs_space(rs_int_adder)>=0):
+-            # put ins into ROB
+-            put_ins_into_ROB(ROB, size_ROB, PC, cycle, ins, '')
+-            # put ins into rs_int_adder
+-            index = check_rs_space(rs_int_adder)
+-            put_bne_into_rs(rs_int_adder, index, ins, rat_int, rat_fp, ROB)
+-            # PC
+-            PC.valid = 0
+-    else:
+-        pass
+-
++def issue(sim):
++    if sim.cycle < sim.fetch_after:
++        return
++    for _ in range(sim.width):
++        if not 0 <= sim.pc < len(sim.program.instructions):
++            break
++        ins = sim.program.instructions[sim.pc]
++        queue = sim.lsq if ins.unit == 'load_store' else sim.rs[ins.unit]
++        capacity = getattr(sim.config, ins.unit).rs
++        if len(sim.rob) >= sim.config.rob_entries or len(queue) >= capacity:
++            sim.stats['structural_stalls'] += 1
++            break  # Never bypass a blocked instruction in an issue bundle.
++        # Capture sources before renaming destination, including within bundle.
++        operands = [sim.source(register) for register in ins.sources]
++        entry = Entry(sim.next_id, sim.pc, ins, sim.cycle, operands)
++        sim.next_id += 1
++        sim.rob.append(entry)
++        sim.history.append(entry)
++        queue.append(entry)
++        sim.stats['issued'] += 1
++        if ins.dest and ins.dest != 'R0':
++            sim.rat[ins.dest] = entry.id
++        next_pc = sim.pc + 1
++        if ins.op in ('beq', 'bne'):
++            prediction = sim.btb[sim.pc & 7]
++            if prediction is not None and prediction['pc'] == sim.pc and prediction['taken']:
++                next_pc = prediction['target']
++            entry.predicted_next = next_pc
++            sim.stats['branch_predictions'] += 1
++        sim.pc = next_pc
+--- original/tomasulo-python/code/main.py
++++ code/main.py
+@@ -1,127 +1,52 @@
+-# Qing 
+-# 21st May 2017 
++#!/usr/bin/env python3
++"""Tomasulo assignment entry point. Author: Ali Alfageeh.
+ 
+-from copy import deepcopy
+-from collections import deque, namedtuple
+-from init import read_instruction, build_rs, ld_sd_entry, ld_sd_exe, ld_sd_mem, cdb, ROB_entry, PC
+-from print_status import ps, pss
+-from issue import issue, check_rs_space
+-from exe import exe 
+-from mem import mem
+-from wb import wb 
+-from commit import commit
+-'''initialize'''
+-# read instructions into a list 
+-instructions = read_instruction('code.in')
+-'''initialize regs, RAT, memory''' 
+-# integer REG
+-reg_int = []
+-for i in range(32):
+-    reg_int.extend([0])
+-reg_int[1] = 12
+-reg_int[2] = 32
+-rat_int = deepcopy(reg_int)
+-# fp REG
+-reg_fp = []
+-for i in range(32):
+-    reg_fp.extend([0])
+-reg_fp[20] = 3.0
+-rat_fp = deepcopy(reg_fp)
+-# memory 
+-memory = []
+-for i in range(256):
+-    memory.extend([0])
+-memory[4] = 3.0
+-memory[8] = 2.0
+-memory[12] = 1.0
+-memory[24] = 6.0
+-memory[28] = 5.0
+-memory[32] = 4.0
+-'''intialize reservation stations'''
+-# 2 integer adder rs 
+-size_rs_int_adder = 4 
+-rs_int_adder = build_rs(size_rs_int_adder)
+-# 3 fp adder rs
+-size_rs_fp_adder = 3
+-rs_fp_adder = build_rs(size_rs_fp_adder)
+-# 2 fp multiplier rs
+-size_rs_fp_multi = 2
+-rs_fp_multi = build_rs(size_rs_fp_multi)
+-'''initilize function unit'''
+-# 1 cycle in int adder 
+-fu_int_adder = deque()
+-time_fu_int_adder = 1
+-# 3 cycles in fp adder 
+-fu_fp_adder = deque()
+-time_fu_fp_adder = 4
+-# 20 cycles in fp multiplier
+-fu_fp_multi = deque()
+-time_fu_fp_multi = 15
+-'''initialize load/store queue'''
+-ld_sd_queue = deque()
+-size_ld_sd_queue = 5 
+-ld_sd_exe = ld_sd_exe()
+-ld_sd_exe.busy = 0
+-time_ld_sd_exe = 1
+-ld_sd_mem = ld_sd_mem()
+-ld_sd_mem.busy = 0
+-time_ld_sd_mem = 5
+-'''initialize ROB'''
+-ROB = deque()
+-size_ROB = 64
+-'''initialize CDB'''
+-results_buffer = deque()
+-cdb = cdb()
+-cdb.valid = 0
+-"""issue first instruction"""
+-# instruction pointer 
+-PC = PC()
+-PC.PC = 0
+-PC.valid = 1 
+-cycle = 1
++Starter attribution: Qing, May 2017. See original/tomasulo-python/ for original files.
++"""
++import argparse
++import json
++import math
++from pathlib import Path
++import sys
++from init import parse_program
++from simulator import Simulator
++from print_status import format_result
+ 
+-# print title 
+-item = ''.ljust(30)
+-item += 'ISSUE'.ljust(15)
+-item += 'EXE'.ljust(15)
+-item += 'MEM'.ljust(15)
+-item += 'WB'.ljust(15)
+-item += 'COMMIT'.ljust(15)
+-print (item)
+ 
+-# main
+-while (len(ROB)>0)|(cycle==1):
+-    
+-    '''ISSUE stage'''
+-    if (PC.PC<len(instructions))&(PC.valid==1):
+-        issue(cycle, PC, instructions, ROB, size_ROB, 
+-                rs_int_adder, 
+-                rs_fp_adder, 
+-                rs_fp_multi, 
+-                ld_sd_queue, size_ld_sd_queue, 
+-                rat_int, rat_fp)
++def json_safe(value):
++    """Keep JSON standards-compliant without changing numeric simulator state.
+ 
+-    '''EXE stage'''
+-    exe(fu_int_adder, time_fu_int_adder, 
+-        fu_fp_adder, time_fu_fp_adder, 
+-        fu_fp_multi, time_fu_fp_multi, results_buffer,  
+-        rs_int_adder, rs_fp_adder, rs_fp_multi, 
+-        ld_sd_exe, time_ld_sd_exe, ld_sd_queue,
+-        cycle, ROB, PC)
++    IEEE non-finite results are explicit strings: NaN, Infinity, -Infinity.
++    """
++    if isinstance(value, float) and not math.isfinite(value):
++        return 'NaN' if math.isnan(value) else ('Infinity' if value > 0 else '-Infinity')
++    if isinstance(value, dict):
++        return {key: json_safe(item) for key, item in value.items()}
++    if isinstance(value, list):
++        return [json_safe(item) for item in value]
++    return value
+ 
+-    '''MEM stage'''
+-    mem(ld_sd_queue, ld_sd_mem, time_ld_sd_mem, results_buffer,
+-        memory, ROB, cycle)
+ 
+-    '''CDB stage'''
+-    wb(cdb, rat_int, rat_fp, 
+-        rs_int_adder, rs_fp_adder, rs_fp_multi,
+-        ld_sd_queue, ROB, cycle,
+-        results_buffer) 
+-    
+-    '''COMMIT stage'''
+-    commit(ROB, reg_int, reg_fp, cycle, instructions)
+-    
+-    # cycle number 
+-    cycle +=1  
+-    
++def main(argv=None):
++    parser = argparse.ArgumentParser(description='Tomasulo simulator - Ali Alfageeh')
++    parser.add_argument('input', nargs='?', default=str(Path(__file__).with_name('code.in')))
++    parser.add_argument('--issue-width', type=int, choices=range(1, 5))
++    parser.add_argument('--json', type=Path, help='also save the complete result as JSON')
++    parser.add_argument('--legacy-branch-bytes', action='store_true', help='interpret branch offsets as bytes (starter compatibility)')
++    parser.add_argument('--max-cycles', type=int, default=100000)
++    args = parser.parse_args(argv)
++    try:
++        program = parse_program(Path(args.input).read_text(), args.legacy_branch_bytes)
++        result = Simulator(program, args.issue_width, args.max_cycles).run()
++    except (OSError, ValueError, RuntimeError) as exc:
++        print(f'error: {exc}', file=sys.stderr)
++        return 1
++    print(format_result(result), end='')
++    if args.json:
++        args.json.parent.mkdir(parents=True, exist_ok=True)
++        args.json.write_text(json.dumps(json_safe(result), indent=2, allow_nan=False) + '\n')
++    return 0
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
+--- original/tomasulo-python/code/mem.py
++++ code/mem.py
+@@ -1,153 +1,63 @@
+-# Qing 
+-# 26th May 2017
++"""Byte-aware loads, forwarding and speculation. Author: Ali Alfageeh."""
++from init import pack_float32, unpack_float32
+ 
+-''' 
+-1. Ld forward check from Sd in ld_sd_queue
+-    -- only check nearest Sd instruction
+-2. execute LD/SD instruction in ld_sd_mem
+-    -- once LD instruction gets data, write back to ld_sd_queue
+-    -- LD instruction should be removed after get data  
+-    -- SD instruction should be removed at commit stage 
+-3. fetch new LD/SD instruction into ld_sd_mem
+-    -- if first element is SD, ready and has valid data, only SD to be committed can be fetched into ld_sd_mem 
+-    -- else put the first no-matched Ld into ld_sd_mem    
+-'''
+-from init import fu_result
+ 
+-# function: forward check from sd
+-# only check nearest sd
+-def forward_check_from_sd(ld_sd_queue, index):
+-    data = []
+-    for i in reversed(range(index)):
+-        if (ld_sd_queue[i].op=='Sd'):
+-            if (ld_sd_queue[i].address == ld_sd_queue[index].address):
+-                if (type(ld_sd_queue[i].data)==int)|(type(ld_sd_queue[i].data)==float):
+-                    data.append(ld_sd_queue[i].data)
+-            break
+-    return data
++def mem(sim):
++    if sim.port is not None:
++        if sim.port['end'] < sim.cycle:
++            sim.port = None
++        else:
++            if sim.port['kind'] != 'store' and sim.port['end'] == sim.cycle:
++                finish_load(sim, sim.port)
++            return
++    for entry in sim.lsq:
++        if entry.ins.op != 'ld' or not entry.ex or entry.ex[-1] >= sim.cycle or entry.mem or entry.fault:
++            continue
++        sources = select_byte_sources(sim, entry)
++        contributing = {store.id: store for store in sources if store is not None}
++        if any(not sim.ready(store.operands[1]) for store in contributing.values()):
++            continue  # Wait only for stores whose bytes this load will consume.
++        full_forward = all(source is not None for source in sources)
++        latency = 1 if full_forward else sim.config.memory_cycles
++        entry.byte_sources = [store.id if store else 0 for store in sources]
++        entry.forwarded_sources = sorted(contributing)
++        if full_forward and len(contributing) == 1:
++            entry.forwarded_from = entry.forwarded_sources[0]
++        # Snapshot memory, then overlay each byte from its newest older store.
++        data = bytearray(sim.memory.read_bytes(entry.address))
++        encoded = {tag: pack_float32(store.operands[1].value)
++                   for tag, store in contributing.items()}
++        for offset, store in enumerate(sources):
++            if store is not None:
++                data[offset] = encoded[store.id][entry.address + offset - store.address]
++        entry.mem = [sim.cycle, sim.cycle + latency - 1]
++        sim.port = dict(entry=entry, end=entry.mem[-1],
++                        kind='forward' if full_forward else 'load', data=bytes(data))
++        if contributing:
++            sim.stats['forwarded_loads'] += 1
++            if not full_forward:
++                sim.stats['partial_forwarded_loads'] += 1
++        if sim.port['end'] == sim.cycle:
++            finish_load(sim, sim.port)
++        break
+ 
+-# function: check if previous all Sds are ready and un-matched
+-def check_all_previous_Sd_no_match(ld_sd_queue, index):
+-    flag = True
+-    for i in range(index):
+-        # all Sd instructions
+-        if (ld_sd_queue[i].op=='Sd'):
+-            if ld_sd_queue[i].ready == 0:
+-                flag = False
+-                break 
+-            elif (ld_sd_queue[i].address==ld_sd_queue[index].address):
+-                flag = False
+-                break
+-            else:
+-                pass
+-    return flag
+- 
+-# function: find ROB entry by tag
+-def find_ROB_entry(ROB, tag):
+-    for index in range(len(ROB)):
+-        if ROB[index].ROB_tag == tag:
+-            break
+-    return index
+ 
+-# function: put entry into ld_sd_mem
+-def put_entry_into_ld_sd_mem(ld_sd_mem, entry):
+-    ld_sd_mem.busy = 1
+-    ld_sd_mem.cycle = 0
+-    ld_sd_mem.address = entry.address
+-    ld_sd_mem.dest_tag = entry.dest_tag
+-    ld_sd_mem.op = entry.op
+-    if ld_sd_mem.op == 'Sd':
+-        ld_sd_mem.data = entry.data
++def select_byte_sources(sim, load):
++    """For each load byte, select its youngest known older overlapping store."""
++    sources = [None] * 4
++    for store in reversed(sim.lsq):
++        if store.id >= load.id or store.ins.op != 'sd' or store.address is None:
++            continue
++        first = max(store.address, load.address)
++        last = min(store.address + 4, load.address + 4)
++        for address in range(first, last):
++            offset = address - load.address
++            if sources[offset] is None:
++                sources[offset] = store
++    return sources
+ 
+-# function: check if Sd to be committed in next cycle 
+-def check_if_sd_committable(ld_sd_queue, ROB):
+-    flag = False
+-    if ld_sd_queue[0].ldsd_tag == ROB[0].dest_tag:
+-        flag = True
+-    if ld_sd_queue[0].ldsd_tag == ROB[1].dest_tag:
+-        # previous ins has been broadcasted
+-        if len(ROB[0].cdb)!=0:
+-            flag = True
+-    return flag
+ 
+-# function: mem 
+-def mem(ld_sd_queue, ld_sd_mem, time_ld_sd_mem, results_buffer, 
+-        memory, ROB, cycle):
+-    '''look forward check for all Ld instructions'''
+-    index = -1
+-    remove_list = []
+-    for element in ld_sd_queue:
+-        index += 1
+-        if (index>=1)&(element.op=='Ld')&(element.ready==1):
+-            data = forward_check_from_sd(ld_sd_queue, index)
+-            if len(data)>0:
+-                # Ld gets data 
+-                results_buffer.append(fu_result())
+-                results_buffer[-1].value = data[0]
+-                results_buffer[-1].dest_tag = element.dest_tag
+-                # remove the Ld instruction
+-                remove_list.append(element)
+-                # write mem cylce in ROB
+-                index = find_ROB_entry(ROB, element.dest_tag)
+-                ROB[index].mem.append(cycle)
+-    # remove lookforwared Ld
+-    for element in remove_list:
+-        ld_sd_queue.remove(element)
+-    '''ld_sd_mem execution'''
+-    if ld_sd_mem.busy == 1:
+-        # write mem starting cycle 
+-        if ld_sd_mem.cycle == 0:
+-            index = find_ROB_entry(ROB, ld_sd_mem.dest_tag)
+-            ROB[index].mem.extend([cycle, cycle+time_ld_sd_mem-1])
+-            # for Sd, write commit cycle
+-            if ld_sd_mem.op == 'Sd':
+-                ROB[index].commit.append(cycle)
+-        
+-        # cycle ++
+-        ld_sd_mem.cycle +=1
+-        # get the data for Ld or reach the memory for Sd
+-        if ld_sd_mem.cycle == time_ld_sd_mem:
+-            ld_sd_mem.busy = 0
+-            if ld_sd_mem.op == 'Ld': 
+-                # put Ld data into results_buffer
+-                address = ld_sd_mem.address 
+-                data = memory[address]
+-                results_buffer.append(fu_result())
+-                results_buffer[-1].value = data
+-                results_buffer[-1].dest_tag = ld_sd_mem.dest_tag
+-            # put data into memory for Sd
+-            else:
+-                memory[ld_sd_mem.address]=ld_sd_mem.data
+-
+-    '''fetch new instruction into ld_sd_mem'''
+-    if (ld_sd_mem.busy==0)&(len(ld_sd_queue)>0):
+-        # flag_1st_ldsd
+-        flag_1st_ldsd_sent = False 
+-        # fetch the ld_sd_queue header if it's Sd, ready and to be committed
+-        if (ld_sd_queue[0].op=='Sd'):
+-            # check if this Sd is ready and to be commited 
+-            if (ld_sd_queue[0].ready==1):
+-                # check to be committed in next cycle
+-                if (check_if_sd_committable):
+-                    # already have data in Sd
+-                    if (type(ld_sd_queue[0].data)==int)|(type(ld_sd_queue[0].data)==float):
+-                        # put the Sd entry into ld_sd_mem
+-                        entry = ld_sd_queue.popleft()
+-                        put_entry_into_ld_sd_mem(ld_sd_mem, entry)
+-                        flag_1st_ldsd_sent = True
+-                        ld_sd_mem.busy = 1
+-
+-        # if the 1st Sd is not sent to ld_sd_mem, or the 1st is not Sd
+-        if (flag_1st_ldsd_sent==False):
+-            for index in range(len(ld_sd_queue)):
+-                # ready Ld
+-                if (ld_sd_queue[index].op=='Ld')&(ld_sd_queue[index].ready==1):
+-                    # haven't got data
+-                    if (type(ld_sd_queue[0].data)!=int)&(type(ld_sd_queue[0].data)!=float):
+-                        # all previous Sd instructions are ready but no address match 
+-                        if check_all_previous_Sd_no_match(ld_sd_queue, index): 
+-                            put_entry_into_ld_sd_mem(ld_sd_mem, ld_sd_queue[index])
+-                            ld_sd_queue.remove(ld_sd_queue[index])
+-                            ld_sd_mem.busy =1
+-                            break 
+-
++def finish_load(sim, transaction):
++    entry = transaction['entry']
++    sim.queue_result(entry, unpack_float32(transaction['data']))
++    sim.lsq.remove(entry)
+--- original/tomasulo-python/code/print_status.py
++++ code/print_status.py
+@@ -1,21 +1,22 @@
+-# Qing 
+-# 21st May 2017
++"""Readable instruction timeline and final state. Author: Ali Alfageeh."""
+ 
+-# function: print RS/ROB status
+-def ps(unit):
+-    if(len(unit)==0):
+-        print('empty!')
+-    else:
+-        # get all fields in namedtuple
+-        fields_list = unit[0]._fields
+-        for unit_item in unit:
+-            print ('******')
+-            for field in fields_list:
+-                print(field+': ', str(getattr(unit_item, field)))
+ 
+-# function: print single namedtuple
+-def pss(snt):
+-    fields_list = snt._fields
+-    for field in fields_list:
+-        print (field+': ', str(getattr(snt, field)))
+-
++def format_result(result):
++    lines = [f"Tomasulo Simulator | Author: {result['author']}",
++             f"Issue width: {result['issue_width']} | Cycles: {result['cycles']} | Committed: {result['committed']}", '',
++             f"{'ID':>4} {'Instruction':<28} {'ISSUE':>5} {'EX':>9} {'MEM':>9} {'WB':>5} {'COMMIT':>6}  STATUS"]
++    interval = lambda v: '-' if not v else f'{v[0]}-{v[-1]}'
++    scalar = lambda v: '-' if v is None else str(v)
++    for row in result['instructions']:
++        status = row['status']
++        if row['squash_reason']:
++            status += ':' + row['squash_reason']
++        lines.append(f"{row['id']:>4} {row['text']:<28} {row['issue']:>5} {interval(row['ex']):>9} {interval(row['mem']):>9} {scalar(row['wb']):>5} {scalar(row['commit']):>6}  {status}")
++    lines += ['', 'REGISTER VALUES']
++    for kind in ('R', 'F'):
++        for start in range(0, 32, 8):
++            lines.append('  '.join(f'{kind}{i}={result["registers"][f"{kind}{i}"]:g}' for i in range(start, start+8)))
++    lines += ['', 'NON-ZERO MEMORY FLOAT VIEWS (byte starts; little-endian binary32)']
++    lines += [f'Mem[{a}]={v:g}' for a, v in result['memory'].items()] or ['(none)']
++    lines += ['', 'STATISTICS'] + [f'{key}: {value}' for key, value in result['stats'].items()]
++    return '\n'.join(lines) + '\n'
+--- /dev/null
++++ code/simulator.py
+@@ -0,0 +1,160 @@
++"""Cycle-accurate teaching model. Assignment author: Ali Alfageeh.
++
++Derived from the module organization and algorithm of Qing's 2017 starter.
++ALU values use Python numbers; memory uses four-byte IEEE 754 binary32 values.
++"""
++from copy import deepcopy
++from dataclasses import dataclass, field
++from init import validate_address
++
++
++@dataclass
++class Operand:
++    value: float | int = 0
++    tag: int | None = None
++    ready_at: int = 0
++
++
++@dataclass
++class Entry:
++    id: int
++    pc: int
++    ins: object
++    issue: int
++    operands: list
++    ex: list = field(default_factory=list)
++    mem: list = field(default_factory=list)
++    wb: int | None = None
++    commit: int | None = None
++    value: float | int | None = None
++    address: int | None = None
++    predicted_next: int | None = None
++    status: str = 'active'
++    squash_reason: str | None = None
++    forwarded_from: int | None = None
++    byte_sources: list = field(default_factory=list)
++    forwarded_sources: list = field(default_factory=list)
++    fault: str | None = None
++    resolved_at: int | None = None
++
++
++class Simulator:
++    """One CDB and one in-order retirement slot, independent of issue width."""
++    def __init__(self, program, issue_width=None, max_cycles=100000):
++        self.program = deepcopy(program)
++        self.config = self.program.config
++        self.width = self.config.issue_width if issue_width is None else issue_width
++        if not isinstance(self.width, int) or not 1 <= self.width <= 4:
++            raise ValueError('Issue width must be between 1 and 4')
++        self.max_cycles = max_cycles
++        self.regs = self.program.registers.copy()
++        self.memory = self.program.memory.copy()
++        self.rat = {}
++        self.rob = []
++        self.history = []
++        self.rs = {name: [] for name in ('integer', 'fp_add', 'fp_mul')}
++        self.lsq = []
++        self.jobs = []
++        self.results = []
++        self.port = None
++        self.pc = 0
++        self.cycle = 0
++        self.next_id = 1
++        self.fetch_after = 1
++        self.btb = [None] * 8
++        self.stats = dict(issued=0, branch_predictions=0, branch_mispredictions=0,
++                          memory_replays=0, structural_stalls=0, forwarded_loads=0,
++                          partial_forwarded_loads=0)
++
++    def source(self, register):
++        if register == 'R0':
++            return Operand()
++        tag = self.rat.get(register)
++        if tag is None:
++            return Operand(self.regs[register])
++        producer = next(e for e in self.rob if e.id == tag)
++        if producer.wb is not None:
++            return Operand(producer.value, ready_at=producer.wb)
++        return Operand(tag=tag)
++
++    def ready(self, operand):
++        return operand.tag is None and operand.ready_at < self.cycle
++
++    def active(self, entry):
++        return entry.status == 'active'
++
++    def queue_result(self, entry, value):
++        entry.value = value
++        self.results.append((self.cycle, entry.id, entry))
++
++    def recover(self, first_id, correct_pc, reason):
++        """Remove every younger effect and rebuild renaming from surviving ROB."""
++        for entry in self.rob:
++            if entry.id >= first_id:
++                entry.status = 'squashed'
++                entry.squash_reason = reason
++        self.rob = [e for e in self.rob if self.active(e)]
++        self.lsq = [e for e in self.lsq if self.active(e)]
++        for unit in self.rs:
++            self.rs[unit] = [e for e in self.rs[unit] if self.active(e)]
++        self.jobs = [job for job in self.jobs if self.active(job['entry'])]
++        self.results = [result for result in self.results if self.active(result[2])]
++        if self.port and not self.active(self.port['entry']):
++            self.port = None
++        self.rat.clear()
++        for entry in self.rob:
++            if entry.ins.dest and entry.ins.dest != 'R0':
++                self.rat[entry.ins.dest] = entry.id
++        self.pc = correct_pc
++        self.fetch_after = self.cycle + 2
++
++    def check_memory_violation(self, store):
++        # Loads are retained in the ROB after leaving the LSQ, so violations
++        # are detected even after a speculative load has already broadcast.
++        violations = []
++        for load in self.rob:
++            if load.id <= store.id or load.ins.op != 'ld' or not load.mem:
++                continue
++            # A later store can hide an older alias on some or all bytes.
++            first = max(store.address, load.address)
++            last = min(store.address + 4, load.address + 4)
++            if any(load.byte_sources[a - load.address] < store.id
++                   for a in range(first, last)):
++                violations.append(load)
++        if violations:
++            load = min(violations, key=lambda e: e.id)
++            self.stats['memory_replays'] += 1
++            self.recover(load.id, load.pc, 'memory_order')
++
++    def run(self):
++        from commit import commit
++        from wb import wb
++        from mem import mem
++        from exe import exe
++        from issue import issue
++        while self.rob or 0 <= self.pc < len(self.program.instructions):
++            self.cycle += 1
++            if self.cycle > self.max_cycles:
++                raise RuntimeError(f'Exceeded {self.max_cycles} cycles (possible infinite loop)')
++            commit(self)
++            wb(self)
++            mem(self)
++            exe(self)
++            issue(self)
++            self.regs['R0'] = 0
++        return self.result()
++
++    def result(self):
++        rows = []
++        for e in self.history:
++            rows.append(dict(id=e.id, pc=e.pc, text=e.ins.text, issue=e.issue,
++                             ex=e.ex, mem=e.mem, wb=e.wb, commit=e.commit,
++                             status=e.status, squash_reason=e.squash_reason,
++                             forwarded_from=e.forwarded_from,
++                             byte_sources=e.byte_sources, forwarded_sources=e.forwarded_sources))
++        return dict(author='Ali Alfageeh', issue_width=self.width,
++                    cycles=self.cycle, committed=sum(e.commit is not None for e in self.history),
++                    registers=self.regs.copy(),
++                    memory={str(a): v for a, v in self.memory.items() if v != 0},
++                    memory_bytes=list(self.memory.data), byte_order='little',
++                    instructions=rows, stats=self.stats.copy())
+--- original/tomasulo-python/code/wb.py
++++ code/wb.py
+@@ -1,73 +1,19 @@
+-# Qing 
+-# 29th May 2017 
++"""Single common-data-bus arbitration. Assignment author: Ali Alfageeh."""
+ 
+-'''
+-1. broadcast data on cdb 
+-2. fetch data from results queue 
+-3. remove entry in results queue
+ 
+-'''
+-# function: find ROB entry by tag
+-def find_ROB_entry(ROB, tag):
+-    for index in range(len(ROB)):
+-        if ROB[index].ROB_tag == tag:
+-            break
+-    return index
+-
+-# function: boroadcast
+-# rat_int, rat_fp, reservation stations, ld_sd_queue, ROB
+-def boroadcast(cdb, rat_int, rat_fp, 
+-                rs_int_adder, rs_fp_adder, rs_fp_multi,
+-                ld_sd_queue, ROB, cycle):
+-    # dest_tag
+-    dest_tag = cdb.dest_tag
+-    index = find_ROB_entry(ROB, dest_tag)
+-    reg_tag = ROB[index].dest_tag
+-    # rat_int
+-    if reg_tag[0] == 'R':
+-        rat_int[int(reg_tag[1:])] = cdb.value
+-    # rat_fp
+-    if reg_tag[0] == 'F':
+-        rat_fp[int(reg_tag[1:])] = cdb.value 
+-    # rs list
+-    rs_list = [rs_int_adder, rs_fp_adder, rs_fp_multi]
+-    for rs in rs_list:
+-        for element in rs:
+-            if (element.tag_1st==dest_tag)&(element.valid_1st==0):
+-                element.value_1st = cdb.value
+-                element.valid_1st = 1
+-            if (element.tag_2nd==dest_tag)&(element.valid_2nd==0):
+-                element.value_2nd = cdb.value
+-                element.valid_2nd = 1
+-    # ld_sd_queue 
+-    for element in ld_sd_queue:
+-        if (element.data==dest_tag)&(element.op=='Sd'):
+-            element.data = cdb.value
+-        if (element.reg_tag==dest_tag)&(element.valid==0):
+-            element.reg_value = cdb.value
+-            element.valid = 1
+-    # ROB
+-    for element in ROB:
+-        if element.ROB_tag == dest_tag:
+-            element.value = cdb.value
+-            element.cdb.append(cycle)
+-
+-# function: wb 
+-def wb(cdb, rat_int, rat_fp, 
+-        rs_int_adder, rs_fp_adder, rs_fp_multi,
+-        ld_sd_queue, ROB, cycle,
+-        results_buffer):
+-    # broadcast 
+-    if cdb.valid == 1:
+-        boroadcast(cdb, rat_int, rat_fp, 
+-                    rs_int_adder, rs_fp_adder, rs_fp_multi,
+-                    ld_sd_queue, ROB, cycle)
+-        cdb.valid = 0
+-    # fetch data from results queue
+-    if cdb.valid == 0:
+-        if len(results_buffer)>0:
+-            cdb.valid = 1
+-            cdb.value = results_buffer[0].value
+-            cdb.dest_tag = results_buffer[0].dest_tag
+-            results_buffer.popleft()
+-
++def wb(sim):
++    eligible = [r for r in sim.results if r[0] < sim.cycle]
++    if not eligible:
++        return
++    result = min(eligible, key=lambda r: (r[0], r[1]))
++    sim.results.remove(result)
++    entry = result[2]
++    entry.wb = sim.cycle
++    # Tags remain in the RAT until their producer commits. An older WAW
++    # producer therefore cannot overwrite a newer register mapping.
++    for waiting in sim.rob:
++        for operand in waiting.operands:
++            if operand.tag == entry.id:
++                operand.tag = None
++                operand.value = entry.value
++                operand.ready_at = sim.cycle

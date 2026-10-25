@@ -1,0 +1,6 @@
+Assignment implementation and report author: Ali Alfageeh
+
+The original 2017 simulator is attributed to Qing in its source headers.
+Unmodified starter files and supplied assignment documents are retained in
+original/ for provenance and for the before/after code comparison.
+
