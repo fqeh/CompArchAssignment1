@@ -1,8 +1,0 @@
-issue WIDTH = 1
-r1=4, f1=2.5
-addi r0, r1, 100
-add R2, R0, r1
-sub R3 R2 R1
-add.d f2, F1, f1
-sd F2, 4(R0)
-ld F3, 4(r0)
