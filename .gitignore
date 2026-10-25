@@ -1,7 +1,0 @@
-.DS_Store
-__pycache__/
-*.py[cod]
-*.dSYM/
-/branch-prediction/cbp2-infrastructure-v2/src/predict
-/branch-prediction/cbp2-infrastructure-v2/src/predict_extra_credit
-/branch-prediction/cbp2-infrastructure-v2/tests/test_pm_predictor
