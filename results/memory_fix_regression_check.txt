@@ -1,1 +1,0 @@
-PASS: all 48 original benchmark runs preserve final registers, memory, cycle totals, committed count and every existing per-instruction stage/status field.
