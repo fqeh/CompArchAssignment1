@@ -1,0 +1,20 @@
+# Tomasulo benchmark. Author: Ali Alfageeh
+# Unit             RS  EX  MEM FUs
+Integer adder       8   1      1
+FP adder            8   3      1
+FP multiplier       8   8      1
+Load/store unit     8   1   4  1
+ROB entries = 32
+
+# Same-bundle RAW, WAW and WAR; R0 writes discarded.
+F2=2,F3=3
+Addi R1 R0 5
+Add R2 R1 R1
+Addi R1 R0 9
+Sub R3 R2 R1
+Addi R0 R0 7
+Add R4 R0 R3
+Mult.d F1 F2 F3
+Add.d F4 F1 F2
+Add.d F1 F2 F2
+Sub.d F5 F4 F1

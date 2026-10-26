@@ -37,6 +37,30 @@ are labeled in the output. `--json` also writes the complete result to a file.
 - `inputs/`: the two sample programs used in the report's timing tables.
 - `Tomasulo_Assignment_Report_Ali_Alfageeh.pdf`: assignment description,
   code changes, measured results, and model limitations.
+- `tests/`: regression tests, an independent reference interpreter, benchmark
+  inputs, and recorded test logs.
+- `results/`: saved text and JSON traces, benchmark summaries, and regression
+  comparisons.
+- `report_assets/`: source-code snapshots and their hash and line-number manifest.
+- `tools/`: report-building source.
+- `original/`: supplied assignment documents, sample report, and starter code.
+- `revision_before/`: earlier source files used in the report's comparisons.
+- `changes.patch` and `AUTHORS.txt`: source differences and attribution.
+
+## Verify and reproduce
+
+From `tomasulo/`:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 tests/run_benchmarks.py
+python3 tools/build_report.py
+```
+
+Tests and benchmarks use only the Python standard library. Building the PDF
+also requires `reportlab`, `Pillow`, and DejaVu fonts. The default font directory
+is `/usr/share/fonts/truetype/dejavu`; set the `FONT_DIR` environment variable
+to another installed DejaVu font directory if needed.
 
 ## Input and model conventions
 

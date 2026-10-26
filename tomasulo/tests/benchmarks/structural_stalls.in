@@ -1,0 +1,16 @@
+# Tomasulo benchmark. Author: Ali Alfageeh
+# Unit             RS  EX  MEM FUs
+Integer adder       8   1      1
+FP adder            1   3      1
+FP multiplier       8   8      1
+Load/store unit     8   1   4  1
+ROB entries = 3
+
+# Full FP RS blocks younger integer issue; ROB also fills.
+F2=2,F3=3
+Mult.d F1 F2 F3
+Add.d F4 F1 F1
+Add.d F5 F4 F4
+Addi R1 R0 1
+Add.d F6 F5 F5
+Addi R2 R1 2

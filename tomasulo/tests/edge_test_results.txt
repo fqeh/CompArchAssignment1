@@ -1,0 +1,11 @@
+test_nonmatching_store_does_not_hide_older_match (test_edge_cases.RecoveryEdgeTests.test_nonmatching_store_does_not_hide_older_match) ... ok
+test_older_branch_overrides_younger_redirect (test_edge_cases.RecoveryEdgeTests.test_older_branch_overrides_younger_redirect) ... ok
+test_right_path_invalid_access_faults_precisely (test_edge_cases.RecoveryEdgeTests.test_right_path_invalid_access_faults_precisely) ... ok
+test_squash_removes_active_and_completed_results (test_edge_cases.RecoveryEdgeTests.test_squash_removes_active_and_completed_results) ... ok
+test_wrong_path_invalid_memory_access_is_squashed (test_edge_cases.RecoveryEdgeTests.test_wrong_path_invalid_memory_access_is_squashed) ... ok
+test_youngest_matching_store_waits_for_its_data (test_edge_cases.RecoveryEdgeTests.test_youngest_matching_store_waits_for_its_data) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.014s
+
+OK

@@ -1,0 +1,22 @@
+# Tomasulo benchmark. Author: Ali Alfageeh
+# Unit             RS  EX  MEM FUs
+Integer adder       8   1      1
+FP adder            8   3      1
+FP multiplier       8   8      1
+Load/store unit     8   1   4  1
+ROB entries = 32
+
+# Branches at word PCs 2 and 10 alias BTB index 2; R2=3,R3=3,R9=0.
+
+Addi R1 R0 3
+Addi R2 R0 0
+Beq R0 R0 1
+Addi R9 R0 99
+Addi R2 R2 1
+Addi R8 R0 0
+Addi R8 R0 0
+Addi R8 R0 0
+Addi R8 R0 0
+Addi R1 R1 -1
+Bne R1 R0 -9
+Add R3 R1 R2
